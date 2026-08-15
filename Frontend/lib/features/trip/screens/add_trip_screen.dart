@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
+import '../services/trip_service.dart';
 
 class AddTripScreen extends StatefulWidget {
   const AddTripScreen({super.key});
@@ -10,6 +13,8 @@ class AddTripScreen extends StatefulWidget {
 
 class _AddTripScreenState extends State<AddTripScreen> {
   final _formKey = GlobalKey<FormState>();
+  final TripService _tripService = TripService();
+  bool _isLoading = false;
   
   // Form controllers and states
   final TextEditingController _nameController = TextEditingController();
@@ -104,22 +109,25 @@ class _AddTripScreenState extends State<AddTripScreen> {
     }
   }
 
-  void _simulateUploadPhoto() {
-    setState(() {
-      _isUploadingPhoto = true;
-    });
-    // Simulate web/file API delay
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
+  Future<void> _pickImage() async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+      if (pickedFile != null) {
         setState(() {
-          _isUploadingPhoto = false;
-          _selectedImagePath = 'trip_cover_mockup.png';
+          _selectedImagePath = pickedFile.path;
         });
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to pick image: ${e.toString()}')),
+        );
+      }
+    }
   }
 
-  void _submitForm() {
+  Future<void> _submitForm() async {
     if (_formKey.currentState!.validate()) {
       if (_startDate == null || _endDate == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -131,67 +139,178 @@ class _AddTripScreenState extends State<AddTripScreen> {
         return;
       }
       
-      // Simulate success and navigation
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFE6F7ED),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_circle,
-                  color: AppColors.secondary,
-                  size: 48,
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Trip Created!',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Your new trip has been planned successfully.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context); // Pop dialog
-                  Navigator.pop(context); // Pop AddTripScreen back to Dashboard
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+      setState(() {
+        _isLoading = true;
+      });
+
+      final tripData = {
+        'name': _nameController.text.trim(),
+        'description': _descriptionController.text.trim(),
+        'startDate': _startDate!.toIso8601String(),
+        'endDate': _endDate!.toIso8601String(),
+        'tripType': _selectedTripType,
+        if (_selectedImagePath != null) 'coverImage': _selectedImagePath,
+      };
+
+      final response = await _tripService.createTrip(tripData);
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (!mounted) return;
+
+      if (response['success'] == true) {
+        final inviteLink = response['data']?['inviteLink'];
+        final inviteToken = response['data']?['inviteToken'] ?? 'Unknown token';
+        
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE6F7ED),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle,
+                    color: AppColors.secondary,
+                    size: 48,
                   ),
                 ),
-                child: const Text('Go to Home'),
-              ),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 20),
+                const Text(
+                  'Trip Created!',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Your new trip has been planned successfully.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Invite Token',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SelectableText(
+                              inviteToken,
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.copy, size: 18, color: AppColors.primary),
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: inviteToken));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Invite token copied!'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      if (inviteLink != null) ...[
+                        const Divider(height: 16),
+                        const Text(
+                          'Invite Link',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SelectableText(
+                                inviteLink,
+                                style: const TextStyle(fontSize: 12, color: AppColors.primary),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.copy, size: 18, color: AppColors.primary),
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: inviteLink));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Invite link copied!'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          'No production domain configured for deep links.',
+                          style: TextStyle(fontSize: 10, color: AppColors.textLight),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context); // Pop dialog
+                    Navigator.pop(context); // Pop AddTripScreen
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Go to Home'),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['message'] ?? 'Failed to create trip'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -488,7 +607,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
                                             child: CircularProgressIndicator(strokeWidth: 3),
                                           )
                                         : ElevatedButton(
-                                            onPressed: _simulateUploadPhoto,
+                                            onPressed: _pickImage,
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor: const Color(0xFFEFF6FF),
                                               foregroundColor: AppColors.primary,
@@ -588,22 +707,42 @@ class _AddTripScreenState extends State<AddTripScreen> {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: _submitForm,
+                            onTap: _isLoading ? null : _submitForm,
                             borderRadius: BorderRadius.circular(16),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Create Trip',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
+                              children: _isLoading
+                                ? const [
+                                    SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    Text(
+                                      'Creating...',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ]
+                                : const [
+                                    Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Create Trip',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
                             ),
                           ),
                         ),

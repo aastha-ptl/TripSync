@@ -46,6 +46,7 @@ const env = {
   ALLOWED_FILE_TYPES: process.env.ALLOWED_FILE_TYPES || "jpg,jpeg,png,pdf,doc,docx,xlsx,csv",
   IMAGE_UPLOAD_SIZE_LIMIT: Number(process.env.IMAGE_UPLOAD_SIZE_LIMIT) || 5 * 1024 * 1024,
   DOCUMENT_UPLOAD_SIZE_LIMIT: Number(process.env.DOCUMENT_UPLOAD_SIZE_LIMIT) || 10 * 1024 * 1024,
+  TRIP_JOIN_BASE_URL: process.env.TRIP_JOIN_BASE_URL || "",
 };
 
 export default env;

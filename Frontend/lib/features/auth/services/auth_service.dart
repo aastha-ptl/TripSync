@@ -6,8 +6,9 @@ import '../../../core/constants/api_endpoints.dart';
 class AuthService {
   Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
     try {
-      final url = Uri.parse('${ApiEndpoints.baseUrl}${ApiEndpoints.register}');
-      
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}${ApiEndpoints.register}');
+
       if (userData.containsKey('profilePhoto') && userData['profilePhoto'] != null) {
         var request = http.MultipartRequest('POST', url);
         
@@ -40,7 +41,8 @@ class AuthService {
 
   Future<Map<String, dynamic>> verifyOtp(String email, String otp) async {
     try {
-      final url = Uri.parse('${ApiEndpoints.baseUrl}${ApiEndpoints.verifyOtp}');
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}${ApiEndpoints.verifyOtp}');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -61,7 +63,8 @@ class AuthService {
 
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
-      final url = Uri.parse('${ApiEndpoints.baseUrl}${ApiEndpoints.login}');
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}${ApiEndpoints.login}');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -82,7 +85,8 @@ class AuthService {
   
   Future<Map<String, dynamic>> resendOtp(String email) async {
     try {
-      final url = Uri.parse('${ApiEndpoints.baseUrl}${ApiEndpoints.resendOtp}');
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}${ApiEndpoints.resendOtp}');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -108,6 +112,12 @@ class AuthService {
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
+    await prefs.remove('access_token');
     await prefs.remove('refresh_token');
+  }
+
+  Future<bool> isLoggedIn() async {
+    final token = await getAccessToken();
+    return token != null && token.isNotEmpty;
   }
 }

@@ -33,7 +33,6 @@ const tripSchema = new mongoose.Schema(
     destination: {
       name: {
         type: String,
-        required: true,
         trim: true,
       },
       latitude: {

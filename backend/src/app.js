@@ -31,8 +31,77 @@ app.get("/api/health", (req, res) => {
 });
 
 import authRoutes from "./routes/authRoutes.js";
+import tripRoutes from "./routes/tripRoutes.js";
 
 app.use("/api/auth", authRoutes);
+app.use("/api/trips", tripRoutes);
+
+app.get("/join/:inviteToken", (req, res) => {
+  const token = req.params.inviteToken;
+  const deepLink = `tripsync://join/${token}`;
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>TripSync Invitation</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background-color: #F8FAFC;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+          margin: 0;
+        }
+        .container {
+          background-color: white;
+          padding: 40px;
+          border-radius: 16px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+          text-align: center;
+          max-width: 400px;
+          width: 90%;
+        }
+        h1 {
+          color: #1E5AE6;
+          margin-bottom: 8px;
+        }
+        p {
+          color: #64748B;
+          margin-bottom: 24px;
+        }
+        .btn {
+          display: inline-block;
+          background-color: #1E5AE6;
+          color: white;
+          padding: 14px 24px;
+          text-decoration: none;
+          border-radius: 8px;
+          font-weight: bold;
+          font-size: 16px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>TripSync</h1>
+        <p>You're invited to join a trip!</p>
+        <a href="${deepLink}" class="btn">Open in TripSync</a>
+      </div>
+      <script>
+        setTimeout(function() {
+          window.location.href = "${deepLink}";
+        }, 500);
+      </script>
+    </body>
+    </html>
+  `);
+});
 
 app.use((req, res) => {
   res.status(404).json({

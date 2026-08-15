@@ -22,4 +22,5 @@ class AppRoutes {
   static const String map = '/map';
   static const String tripOverview = '/trip-overview';
   static const String tasks = '/tasks';
+  static const String joinTrip = '/join-trip';
 }

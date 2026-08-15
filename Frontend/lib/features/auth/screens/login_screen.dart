@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../services/auth_service.dart';
+import '../../trip/services/invite_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -209,7 +210,20 @@ class _LoginScreenState extends State<LoginScreen> {
                           });
 
                           if (result['success'] == true) {
-                             Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
+                             final pendingToken = await InviteService().getPendingInviteToken();
+                             if (pendingToken != null && pendingToken.isNotEmpty) {
+                               await InviteService().clearPendingInviteToken();
+                               if (context.mounted) {
+                                 Navigator.of(context).pushReplacementNamed(
+                                   AppRoutes.joinTrip,
+                                   arguments: {'inviteToken': pendingToken},
+                                 );
+                               }
+                             } else {
+                               if (context.mounted) {
+                                 Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
+                               }
+                             }
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(

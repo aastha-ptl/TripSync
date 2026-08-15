@@ -8,6 +8,7 @@ import '../../features/auth/screens/register_otp_screen.dart';
 import '../../features/auth/screens/register_success_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/trip/screens/add_trip_screen.dart';
+import '../../features/trip/screens/join_trip_screen.dart';
 import '../../features/trip/screens/trip_details_screen.dart';
 import '../../features/chat/screens/chat_screen.dart';
 import '../../features/itinerary/screens/itinerary_screen.dart';
@@ -75,7 +76,21 @@ class AppRouter {
         return _slideRoute(const TripOverviewScreen());
       case AppRoutes.tasks:
         return _slideRoute(const TasksScreen());
+      case AppRoutes.joinTrip:
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slideRoute(JoinTripScreen(inviteToken: args?['inviteToken']));
       default:
+        // When a deep link is received, Flutter's native router tries to push its path (e.g., /f89b3613b815)
+        // Since InviteService handles the deep link manually, we show a loading screen here instead of an error.
+        if (settings.name != null && settings.name!.startsWith('/') && settings.name != AppRoutes.splash) {
+          return MaterialPageRoute(
+            builder: (_) => const Scaffold(
+              backgroundColor: Colors.white,
+              body: Center(child: CircularProgressIndicator(color: Colors.blue)),
+            ),
+          );
+        }
+
         return MaterialPageRoute(
           builder: (_) => Scaffold(
             body: Center(

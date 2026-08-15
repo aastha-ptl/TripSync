@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../trip/services/invite_service.dart';
 
 class RegisterSuccessScreen extends StatelessWidget {
   const RegisterSuccessScreen({super.key});
@@ -64,8 +65,21 @@ class RegisterSuccessScreen extends StatelessWidget {
                 children: [
                   // Get Started button
                   ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
+                    onPressed: () async {
+                      final pendingToken = await InviteService().getPendingInviteToken();
+                      if (pendingToken != null && pendingToken.isNotEmpty) {
+                        await InviteService().clearPendingInviteToken();
+                        if (context.mounted) {
+                          Navigator.of(context).pushReplacementNamed(
+                            AppRoutes.joinTrip,
+                            arguments: {'inviteToken': pendingToken},
+                          );
+                        }
+                      } else {
+                        if (context.mounted) {
+                          Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
+                        }
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.secondary,

@@ -5,7 +5,7 @@ import '../../calendar/screens/calendar_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 import '../../trip/screens/trips_screen.dart';
 import '../../../core/routes/app_routes.dart';
-
+import '../../auth/services/auth_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -155,6 +155,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 20),
                     _buildQuickNav(),
                     const SizedBox(height: 24),
+                    _buildJoinTripBanner(),
+                    const SizedBox(height: 24),
                     _buildUpcomingSection(),
                     const SizedBox(height: 24),
                     _buildAllTripsSection(),
@@ -272,7 +274,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 )
               ],
             ),
-            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(
+                Icons.logout,
+                color: AppColors.textPrimary,
+                size: 24,
+              ),
+              onPressed: () async {
+                await AuthService().logout();
+                if (context.mounted) {
+                  Navigator.pushReplacementNamed(context, AppRoutes.login);
+                }
+              },
+            ),
+            const SizedBox(width: 4),
             GestureDetector(
               onTap: () {
                 setState(() {
@@ -334,6 +349,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildJoinTripBanner() {
+    return GestureDetector(
+      onTap: () {
+        Navigator.pushNamed(context, AppRoutes.joinTrip);
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF6FF),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFDBEAFE)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.group_add_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Have an Invite Token?',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Tap here to join a trip',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              color: AppColors.primary,
+              size: 16,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -3,9 +3,14 @@ import 'package:flutter/services.dart';
 import 'core/theme/app_theme.dart';
 import 'core/routes/app_routes.dart';
 import 'core/routes/app_router.dart';
+import 'features/trip/services/invite_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() {
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
@@ -17,8 +22,25 @@ void main() {
   runApp(const TripSyncApp());
 }
 
-class TripSyncApp extends StatelessWidget {
+class TripSyncApp extends StatefulWidget {
   const TripSyncApp({super.key});
+
+  @override
+  State<TripSyncApp> createState() => _TripSyncAppState();
+}
+
+class _TripSyncAppState extends State<TripSyncApp> {
+  @override
+  void initState() {
+    super.initState();
+    InviteService().initDeepLinks();
+  }
+
+  @override
+  void dispose() {
+    InviteService().dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +48,7 @@ class TripSyncApp extends StatelessWidget {
       title: 'TripSync',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      navigatorKey: navigatorKey,
       initialRoute: AppRoutes.splash,
       onGenerateRoute: AppRouter.generateRoute,
     );
