@@ -12,6 +12,7 @@ const generateOTP = () => {
 export const register = async (req, res, next) => {
   try {
     const { firstName, lastName, email, phone, password } = req.body;
+    const profilePhoto = req.file ? req.file.path : null;
 
     if (!firstName || !lastName || !email || !phone || !password) {
       return res.status(400).json({ success: false, message: "Please provide all required fields." });
@@ -25,19 +26,19 @@ export const register = async (req, res, next) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    const user = await User.create({
-      firstName,
-      lastName,
-      email,
-      phone,
-      passwordHash,
-      authProvider: "local",
-      accountStatus: "pending_verification",
-    });
-
     const otp = generateOTP();
     await OTP.deleteMany({ email }); // Clear any existing OTPs for this email
-    await OTP.create({ email, otp });
+    await OTP.create({ 
+      email, 
+      otp,
+      userData: {
+        firstName,
+        lastName,
+        phone,
+        passwordHash,
+        profilePhoto,
+      }
+    });
 
     const html = generateOTPEmailTemplate(otp);
     await sendEmail({
@@ -50,8 +51,7 @@ export const register = async (req, res, next) => {
       success: true,
       message: "Registration successful. Please check your email for the OTP.",
       data: {
-        userId: user._id,
-        email: user.email,
+        email: email,
       }
     });
   } catch (error) {
@@ -72,15 +72,25 @@ export const verifyOTP = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid or expired OTP." });
     }
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found." });
+    let user = await User.findOne({ email });
+    if (user) {
+      if (user.accountStatus === "active") {
+        return res.status(400).json({ success: false, message: "Account is already active." });
+      }
+      user.accountStatus = "active";
+      user.isEmailVerified = true;
+      user.isActive = true;
+      await user.save();
+    } else {
+      user = await User.create({
+        ...otpRecord.userData,
+        email: otpRecord.email,
+        authProvider: "local",
+        accountStatus: "active",
+        isEmailVerified: true,
+        isActive: true,
+      });
     }
-
-    user.accountStatus = "active";
-    user.isEmailVerified = true;
-    user.isActive = true;
-    await user.save();
 
     await OTP.deleteMany({ email }); // Delete OTP after successful verification
 
@@ -171,17 +181,19 @@ export const resendOTP = async (req, res, next) => {
     }
 
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found." });
-    }
-
-    if (user.accountStatus === "active") {
+    if (user && user.accountStatus === "active") {
       return res.status(400).json({ success: false, message: "Account is already verified." });
     }
 
+    const existingOtp = await OTP.findOne({ email });
+    if (!existingOtp) {
+      return res.status(404).json({ success: false, message: "OTP expired or not found. Please register again." });
+    }
+
     const otp = generateOTP();
-    await OTP.deleteMany({ email });
-    await OTP.create({ email, otp });
+    existingOtp.otp = otp;
+    existingOtp.createdAt = new Date();
+    await existingOtp.save();
 
     const html = generateOTPEmailTemplate(otp);
     await sendEmail({

@@ -3,16 +3,12 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ApiEndpoints {
   static String get baseUrl {
+    // 192.168.31.6 is the local IP address of the machine running the backend.
+    // This allows both physical Android/iOS devices and Emulators on the same WiFi to connect.
     if (kIsWeb) {
       return 'http://localhost:5000/api';
-    } else if (Platform.isAndroid) {
-      // 10.0.2.2 is the special alias to your host loopback interface in the Android Emulator
-      return 'http://10.0.2.2:5000/api';
-    } else {
-      // For iOS Simulator or physical devices. 
-      // NOTE: For physical devices, you will need to change this to your machine's local IP address (e.g., http://192.168.1.15:5000/api)
-      return 'http://localhost:5000/api';
     }
+    return 'http://192.168.31.6:5000/api';
   }
 
   // Auth

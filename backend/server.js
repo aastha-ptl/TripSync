@@ -6,7 +6,7 @@ const startServer = async () => {
   try {
     await connectDB();
 
-    const server = app.listen(env.PORT, () => {
+    const server = app.listen(env.PORT, '0.0.0.0', () => {
       console.log(`TripSync API server running on port ${env.PORT}`);
     });
 
