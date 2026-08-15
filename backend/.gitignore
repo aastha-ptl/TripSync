@@ -1,0 +1,25 @@
+node_modules/
+.env
+.env.*
+*.log
+npm-debug.log*
+logs/
+coverage/
+.DS_Store
+Thumbs.db
+uploads/
+public/uploads/
+.vscode/
+.idea/
+*.local
+
+# Build output
+/dist
+/build
+
+# Test output
+coverage/
+
+# OS files
+*.swp
+*.swo
