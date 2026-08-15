@@ -4,8 +4,25 @@ import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/bottom_waves.dart';
 
-class RegisterStep1Screen extends StatelessWidget {
+class RegisterStep1Screen extends StatefulWidget {
   const RegisterStep1Screen({super.key});
+
+  @override
+  State<RegisterStep1Screen> createState() => _RegisterStep1ScreenState();
+}
+
+class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -127,6 +144,7 @@ class RegisterStep1Screen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   TextField(
+                    controller: _nameController,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.person_outline, size: 22),
                       hintText: 'Enter your full name',
@@ -145,6 +163,7 @@ class RegisterStep1Screen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   TextField(
+                    controller: _phoneController,
                     keyboardType: TextInputType.phone,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.phone_outlined, size: 22),
@@ -164,6 +183,7 @@ class RegisterStep1Screen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   TextField(
+                    controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.mail_outline, size: 22),
@@ -175,7 +195,26 @@ class RegisterStep1Screen extends StatelessWidget {
                   // Next Button
                   ElevatedButton(
                     onPressed: () {
-                      Navigator.of(context).pushNamed(AppRoutes.registerStep2);
+                      final fullName = _nameController.text.trim();
+                      final names = fullName.split(' ');
+                      final firstName = names.isNotEmpty ? names[0] : '';
+                      final lastName = names.length > 1 ? names.sublist(1).join(' ') : '';
+                      
+                      if (firstName.isEmpty || _emailController.text.isEmpty || _phoneController.text.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please fill all fields')),
+                        );
+                        return;
+                      }
+
+                      final userData = {
+                        'firstName': firstName,
+                        'lastName': lastName.isEmpty ? firstName : lastName,
+                        'email': _emailController.text.trim(),
+                        'phone': _phoneController.text.trim(),
+                      };
+
+                      Navigator.of(context).pushNamed(AppRoutes.registerStep2, arguments: userData);
                     },
                     child: const Text('Next'),
                   ),

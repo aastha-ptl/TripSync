@@ -34,9 +34,11 @@ class AppRouter {
       case AppRoutes.registerStep1:
         return _slideRoute(const RegisterStep1Screen());
       case AppRoutes.registerStep2:
-        return _slideRoute(const RegisterStep2Screen());
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        return _slideRoute(RegisterStep2Screen(userData: args));
       case AppRoutes.registerOtp:
-        return _slideRoute(const RegisterOtpScreen());
+        final email = settings.arguments as String?;
+        return _slideRoute(RegisterOtpScreen(email: email ?? ''));
       case AppRoutes.registerSuccess:
         return _fadeRoute(const RegisterSuccessScreen());
       case AppRoutes.dashboard:
