@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/bottom_waves.dart';
+import '../services/auth_service.dart';
 
 class RegisterStep2Screen extends StatefulWidget {
-  const RegisterStep2Screen({super.key});
+  final Map<String, dynamic> userData;
+  const RegisterStep2Screen({super.key, required this.userData});
 
   @override
   State<RegisterStep2Screen> createState() => _RegisterStep2ScreenState();
@@ -14,6 +16,16 @@ class RegisterStep2Screen extends StatefulWidget {
 class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isLoading = false;
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -128,6 +140,7 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
                         ),
                         const SizedBox(height: 8),
                         TextField(
+                          controller: _passwordController,
                           obscureText: _obscurePassword,
                           decoration: InputDecoration(
                             hintText: 'Enter your password',
@@ -155,6 +168,7 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
                         ),
                         const SizedBox(height: 8),
                         TextField(
+                          controller: _confirmPasswordController,
                           obscureText: _obscureConfirmPassword,
                           decoration: InputDecoration(
                             hintText: 'Confirm your password',
@@ -174,9 +188,44 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
                         const SizedBox(height: 28),
 
                         // Next Button
-                        ElevatedButton(
-                          onPressed: () {
-                            Navigator.of(context).pushNamed(AppRoutes.registerOtp);
+                        _isLoading 
+                          ? const Center(child: CircularProgressIndicator()) 
+                          : ElevatedButton(
+                          onPressed: () async {
+                            final password = _passwordController.text;
+                            final confirmPassword = _confirmPasswordController.text;
+                            
+                            if (password.isEmpty || password != confirmPassword) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Passwords do not match or are empty')),
+                              );
+                              return;
+                            }
+                            
+                            setState(() {
+                              _isLoading = true;
+                            });
+                            
+                            final userData = Map<String, dynamic>.from(widget.userData);
+                            userData['password'] = password;
+                            
+                            final authService = AuthService();
+                            final result = await authService.register(userData);
+                            
+                            setState(() {
+                              _isLoading = false;
+                            });
+                            
+                            if (result['success'] == true) {
+                              Navigator.of(context).pushNamed(AppRoutes.registerOtp, arguments: userData['email']);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(result['message'] ?? 'Registration failed'),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                            }
                           },
                           child: const Text('Next'),
                         ),

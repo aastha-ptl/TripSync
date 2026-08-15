@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
+import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,6 +14,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _rememberMe = false;
   bool _obscurePassword = true;
+  bool _isLoading = false;
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -181,16 +183,37 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 24),
 
                       // Login Button
-                      ElevatedButton(
-                        onPressed: () {
+                      _isLoading 
+                        ? const Center(child: CircularProgressIndicator()) 
+                        : ElevatedButton(
+                        onPressed: () async {
                           final email = _emailController.text.trim();
                           final password = _passwordController.text.trim();
-                          if (email == 'user@gmail.com' && password == 'user@123') {
-                            Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
+                          
+                          if (email.isEmpty || password.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Please enter email and password')),
+                            );
+                            return;
+                          }
+
+                          setState(() {
+                            _isLoading = true;
+                          });
+
+                          final authService = AuthService();
+                          final result = await authService.login(email, password);
+
+                          setState(() {
+                            _isLoading = false;
+                          });
+
+                          if (result['success'] == true) {
+                             Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Invalid credentials. Use user@gmail.com / user@123'),
+                              SnackBar(
+                                content: Text(result['message'] ?? 'Login failed'),
                                 backgroundColor: Colors.redAccent,
                               ),
                             );

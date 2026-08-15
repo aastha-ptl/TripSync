@@ -4,21 +4,24 @@ import 'package:flutter/services.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../shared/widgets/bottom_waves.dart';
+import '../services/auth_service.dart';
 
 class RegisterOtpScreen extends StatefulWidget {
-  const RegisterOtpScreen({super.key});
+  final String email;
+  const RegisterOtpScreen({super.key, required this.email});
 
   @override
   State<RegisterOtpScreen> createState() => _RegisterOtpScreenState();
 }
 
 class _RegisterOtpScreenState extends State<RegisterOtpScreen> {
-  final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
-  final List<TextEditingController> _controllers = List.generate(4, (_) => TextEditingController());
+  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  final List<TextEditingController> _controllers = List.generate(6, (_) => TextEditingController());
   
   int _secondsRemaining = 59;
   late Timer _timer;
   bool _canResend = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -59,7 +62,7 @@ class _RegisterOtpScreenState extends State<RegisterOtpScreen> {
 
   void _onOtpDigitChanged(String value, int index) {
     if (value.isNotEmpty) {
-      if (index < 3) {
+      if (index < 5) {
         _focusNodes[index + 1].requestFocus();
       } else {
         _focusNodes[index].unfocus();
@@ -111,7 +114,7 @@ class _RegisterOtpScreenState extends State<RegisterOtpScreen> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    "Enter the 4-digit code sent to your email",
+                    "Enter the 6-digit code sent to your email",
                     style: TextStyle(
                       fontSize: 15,
                       color: AppColors.textSecondary,
@@ -189,9 +192,9 @@ class _RegisterOtpScreenState extends State<RegisterOtpScreen> {
                         // OTP Input Row
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: List.generate(4, (index) {
+                          children: List.generate(6, (index) {
                             return SizedBox(
-                              width: 56,
+                              width: 44, // reduced width slightly to fit 6 boxes
                               height: 56,
                               child: TextField(
                                 controller: _controllers[index],
@@ -212,11 +215,11 @@ class _RegisterOtpScreenState extends State<RegisterOtpScreen> {
                                   counterText: "",
                                   contentPadding: EdgeInsets.zero,
                                   enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(10),
                                     borderSide: const BorderSide(color: AppColors.border, width: 1.5),
                                   ),
                                   focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(10),
                                     borderSide: const BorderSide(color: AppColors.primary, width: 2),
                                   ),
                                 ),
@@ -241,7 +244,26 @@ class _RegisterOtpScreenState extends State<RegisterOtpScreen> {
                                 ),
                               ] else ...[
                                 GestureDetector(
-                                  onTap: _startTimer,
+                                  onTap: () async {
+                                    setState(() {
+                                      _isLoading = true;
+                                    });
+                                    final authService = AuthService();
+                                    final res = await authService.resendOtp(widget.email);
+                                    setState(() {
+                                      _isLoading = false;
+                                    });
+                                    if (res['success'] == true) {
+                                      _startTimer();
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('OTP Resent! Check your email.')),
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(res['message'] ?? 'Failed to resend')),
+                                      );
+                                    }
+                                  },
                                   child: const Text(
                                     'Resend Code',
                                     style: TextStyle(
@@ -258,9 +280,39 @@ class _RegisterOtpScreenState extends State<RegisterOtpScreen> {
                         const SizedBox(height: 28),
 
                         // Verify & Complete Button
-                        ElevatedButton(
-                          onPressed: () {
-                            Navigator.of(context).pushNamed(AppRoutes.registerSuccess);
+                        _isLoading 
+                          ? const Center(child: CircularProgressIndicator())
+                          : ElevatedButton(
+                          onPressed: () async {
+                            final otp = _controllers.map((c) => c.text).join();
+                            if (otp.length < 6) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Please enter 6-digit code')),
+                              );
+                              return;
+                            }
+                            
+                            setState(() {
+                              _isLoading = true;
+                            });
+                            
+                            final authService = AuthService();
+                            final result = await authService.verifyOtp(widget.email, otp);
+                            
+                            setState(() {
+                              _isLoading = false;
+                            });
+                            
+                            if (result['success'] == true) {
+                              Navigator.of(context).pushReplacementNamed(AppRoutes.registerSuccess);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(result['message'] ?? 'Verification failed'),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                            }
                           },
                           child: const Text('Verify & Submit'),
                         ),
