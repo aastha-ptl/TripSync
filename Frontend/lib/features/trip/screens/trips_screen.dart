@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/routes/app_routes.dart';
+import '../../../core/widgets/custom_app_bar.dart';
+import '../services/trip_service.dart';
+import '../../profile/services/user_service.dart';
+import 'trip_details_screen.dart';
+import 'solo_traveler_dashboard_screen.dart';
+import 'member_dashboard_screen.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class TripsScreen extends StatefulWidget {
   final VoidCallback onProfileTap;
@@ -16,38 +23,100 @@ class _TripsScreenState extends State<TripsScreen> {
   String _selectedFilter = 'All';
   final TextEditingController _searchController = TextEditingController();
 
-  final List<Map<String, dynamic>> _allTrips = [
-    {
-      'title': 'Paris Getaway',
-      'location': 'Paris, France',
-      'dates': 'May 20 - May 27, 2025',
-      'status': 'Upcoming',
-      'statusColor': const Color(0xFFE8F0FE),
-      'textColor': const Color(0xFF1E5AE6),
-      'imageUrl': 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&auto=format&fit=crop&q=60',
-      'role': 'Trip Leader',
-    },
-    {
-      'title': 'Greece Escape',
-      'location': 'Greece',
-      'dates': 'Apr 10 - Apr 18, 2025',
-      'status': 'Upcoming',
-      'statusColor': const Color(0xFFE8F0FE),
-      'textColor': const Color(0xFF1E5AE6),
-      'imageUrl': 'https://images.unsplash.com/photo-1533105079780-92b9be482077?w=400&auto=format&fit=crop&q=60',
-      'role': 'Family Leader',
-    },
-    {
-      'title': 'Bali Adventure',
-      'location': 'Indonesia',
-      'dates': 'May 25 - Jun 01, 2025',
-      'status': 'Upcoming',
-      'statusColor': const Color(0xFFE8F0FE),
-      'textColor': const Color(0xFF1E5AE6),
-      'imageUrl': 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&auto=format&fit=crop&q=60',
-      'role': 'Solo Traveller',
-    },
-  ];
+  List<Map<String, dynamic>> _allTrips = [];
+  bool _isLoading = true;
+  final TripService _tripService = TripService();
+  final UserService _userService = UserService();
+  String? _profilePhotoUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchTrips();
+    _fetchProfile();
+  }
+
+  Future<void> _fetchProfile() async {
+    final response = await _userService.getProfile();
+    if (mounted && response['success'] == true) {
+      setState(() {
+        _profilePhotoUrl = response['data']['profilePhoto'];
+      });
+    }
+  }
+
+  Future<void> _fetchTrips() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final response = await _tripService.getTrips();
+    if (mounted) {
+      if (response['success'] == true) {
+        final List<dynamic> data = response['data'];
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        
+        setState(() {
+          _allTrips = data.map((trip) {
+            final rawStartDate = DateTime.parse(trip['startDate']);
+            final rawEndDate = DateTime.parse(trip['endDate']);
+            final startDate = DateTime(rawStartDate.year, rawStartDate.month, rawStartDate.day);
+            final endDate = DateTime(rawEndDate.year, rawEndDate.month, rawEndDate.day);
+            
+            String status = 'Ongoing';
+            Color statusColor = const Color(0xFFE8F0FE);
+            Color textColor = const Color(0xFF1E5AE6);
+            
+            if (today.isBefore(startDate)) {
+              status = 'Upcoming';
+            } else if (today.isAfter(endDate)) {
+              status = 'Completed';
+              statusColor = const Color(0xFFF1F5F9);
+              textColor = const Color(0xFF475569);
+            }
+
+            final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            final dateStr = '${months[startDate.month - 1]} ${startDate.day} - ${months[endDate.month - 1]} ${endDate.day}, ${endDate.year}';
+            
+            String roleStr = trip['participantRole'] ?? 'Member';
+            if (roleStr == 'tripLeader') roleStr = 'Trip Leader';
+            if (roleStr == 'soloTraveler') roleStr = 'Solo Traveler';
+
+            String imageUrl = trip['coverImage'] ?? 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&auto=format&fit=crop&q=60';
+            if (imageUrl.startsWith('http://localhost')) {
+               // handle localhost issues if needed, but assuming valid URL
+            }
+
+            return {
+              'id': trip['_id'],
+              '_id': trip['_id'],
+              'startDate': trip['startDate'],
+              'endDate': trip['endDate'],
+              'title': trip['name'] ?? 'Untitled Trip',
+              'name': trip['name'] ?? 'Untitled Trip',
+              'location': 'Trip Location', // Not in schema, placeholder
+              'dates': dateStr,
+              'status': status,
+              'statusColor': statusColor,
+              'textColor': textColor,
+              'imageUrl': imageUrl,
+              'role': roleStr,
+              'originalRole': trip['participantRole'] ?? 'Member',
+            };
+          }).toList();
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message'] ?? 'Failed to load trips')),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -69,118 +138,39 @@ class _TripsScreenState extends State<TripsScreen> {
     return SafeArea(
       child: Column(
         children: [
-          _buildHeader(title: 'My Trips'),
+          CustomAppBar(
+            title: 'My Trips',
+            profilePhotoUrl: _profilePhotoUrl,
+            onProfileTap: widget.onProfileTap,
+          ),
           Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 20),
-                    _buildSearchBar(),
-                    const SizedBox(height: 16),
-                    _buildFilterChips(),
-                    const SizedBox(height: 24),
-                    _buildAllTripsSection(),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 20),
+                          _buildSearchBar(),
+                          const SizedBox(height: 16),
+                          _buildFilterChips(),
+                          const SizedBox(height: 24),
+                          _buildAllTripsSection(),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader({required String title}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-        Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/images/logo.png',
-                height: 56,
-                width: 56,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  height: 56,
-                  width: 56,
-                  color: Colors.grey[200],
-                  child: const Icon(Icons.map, color: AppColors.primary),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            Stack(
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.notifications_outlined,
-                    color: AppColors.textPrimary,
-                    size: 28,
-                  ),
-                  onPressed: () {},
-                ),
-                Positioned(
-                  right: 12,
-                  top: 12,
-                  child: Container(
-                    height: 8,
-                    width: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1E5AE6),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                )
-              ],
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: widget.onProfileTap,
-              child: const CircleAvatar(
-                radius: 20,
-                backgroundImage: NetworkImage(
-                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
+
 
   Widget _buildSearchBar() {
     return Container(
@@ -353,9 +343,7 @@ class _TripsScreenState extends State<TripsScreen> {
                 itemBuilder: (context, index) {
                   final trip = filtered[index];
                   return GestureDetector(
-                    onTap: () {
-                      Navigator.pushNamed(context, AppRoutes.tripDetails);
-                    },
+                    onTap: () => _navigateToTripDashboard(trip),
                     child: Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(12),
@@ -374,8 +362,7 @@ class _TripsScreenState extends State<TripsScreen> {
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(16),
-                            child: Image.network(
-                              trip['imageUrl'],
+                            child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(trip['imageUrl']),
                               width: 80,
                               height: 80,
                               fit: BoxFit.cover,
@@ -499,4 +486,43 @@ class _TripsScreenState extends State<TripsScreen> {
       ],
     );
   }
+
+  void _navigateToTripDashboard(Map<String, dynamic> trip) {
+    if (trip['id'] == null) return;
+    
+    final role = trip['originalRole']?.toString().toLowerCase() ?? 'member';
+    
+    if (role == 'admin' || role == 'creator' || role == 'tripleader') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TripDetailsScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+          ),
+        ),
+      );
+    } else if (role == 'solotraveler' || role == 'solo_traveler') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SoloTravelerDashboardScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+          ),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MemberDashboardScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+          ),
+        ),
+      );
+    }
+  }
 }
+

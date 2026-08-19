@@ -2,84 +2,77 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/routes/app_routes.dart';
 
+import '../../profile/screens/profile_screen.dart';
+import '../../trip/services/trip_service.dart';
+import '../screens/join_requests_screen.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
+
 class ParticipantsScreen extends StatefulWidget {
   final VoidCallback? onBack;
+  final Map<String, dynamic>? tripData;
+  final String? profilePhotoUrl;
 
-  const ParticipantsScreen({super.key, this.onBack});
+  const ParticipantsScreen({
+    super.key, 
+    this.onBack,
+    this.tripData,
+    this.profilePhotoUrl,
+  });
 
   @override
   State<ParticipantsScreen> createState() => _ParticipantsScreenState();
 }
 
 class _ParticipantsScreenState extends State<ParticipantsScreen> {
+  final TripService _tripService = TripService();
   String _searchQuery = '';
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _participants = [];
+  int _pendingRequestsCount = 0;
 
-  final List<Map<String, dynamic>> _participants = [
-    {
-      'name': 'Aastha Patel',
-      'role': 'Trip Leader',
-      'type': 'Family',
-      'group': 'Patel Family',
-      'avatar': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 98765 43210',
-    },
-    {
-      'name': 'Rahul Verma',
-      'role': 'Member',
-      'type': 'Solo',
-      'group': 'Solo Traveler',
-      'avatar': 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 99988 87766',
-    },
-    {
-      'name': 'Priya Sharma',
-      'role': 'Member',
-      'type': 'Solo',
-      'group': 'Solo Traveler',
-      'avatar': 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 98765 00112',
-    },
-    {
-      'name': 'Vivek Mehta',
-      'role': 'Member',
-      'type': 'Family',
-      'group': 'Mehta Family',
-      'avatar': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 99112 23344',
-    },
-    {
-      'name': 'Rohan Patel',
-      'role': 'Member',
-      'type': 'Family',
-      'group': 'Patel Family',
-      'avatar': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 98765 43211',
-    },
-    {
-      'name': 'Kiran Patel',
-      'role': 'Member',
-      'type': 'Family',
-      'group': 'Patel Family',
-      'avatar': 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 98765 43212',
-    },
-    {
-      'name': 'Suresh Mehta',
-      'role': 'Member',
-      'type': 'Family',
-      'group': 'Mehta Family',
-      'avatar': 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 99112 23345',
-    },
-    {
-      'name': 'Anjali Sen',
-      'role': 'Member',
-      'type': 'Solo',
-      'group': 'Solo Traveler',
-      'avatar': 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 99999 11111',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchParticipants();
+  }
+
+  Future<void> _fetchParticipants() async {
+    if (widget.tripData == null || widget.tripData!['id'] == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    final responses = await Future.wait([
+      _tripService.getTripParticipants(widget.tripData!['id']),
+      _tripService.getJoinRequests(widget.tripData!['id']),
+    ]);
+
+    final response = responses[0];
+    final reqResponse = responses[1];
+
+    int count = 0;
+    if (reqResponse['success'] == true) {
+      count = (reqResponse['data'] as List).length;
+    }
+
+    if (response['success'] == true) {
+      setState(() {
+        _participants = List<Map<String, dynamic>>.from(response['data']);
+        _pendingRequestsCount = count;
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message'] ?? 'Failed to load members')),
+        );
+      }
+    }
+  }
+
+
 
   List<Map<String, dynamic>> get _filteredParticipants {
     if (_searchQuery.isEmpty) return _participants;
@@ -134,18 +127,23 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=150&auto=format&fit=crop&q=80',
-                              height: 48,
-                              width: 48,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                height: 48,
-                                width: 48,
-                                color: Colors.grey[200],
-                                child: const Icon(Icons.image, color: Colors.grey),
-                              ),
-                            ),
+                            child: widget.tripData != null && widget.tripData!['imageUrl'] != null
+                                ? CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(widget.tripData!['imageUrl']),
+                                    height: 48,
+                                    width: 48,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (context, url, error) => Container(
+                                      height: 48,
+                                      width: 48,
+                                      color: Colors.grey[200],
+                                      child: const Icon(Icons.image, color: Colors.grey),
+                                    ),
+                                  )
+                                : CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl('https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=150&auto=format&fit=crop&q=80'),
+                                    height: 48,
+                                    width: 48,
+                                    fit: BoxFit.cover,
+                                  ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -187,37 +185,87 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  IconButton(
-                    icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.primary),
-                    onPressed: () async {
-                      final acceptedUser = await Navigator.pushNamed(context, AppRoutes.joinRequests);
-                      if (acceptedUser != null && acceptedUser is Map<String, dynamic>) {
-                        setState(() {
-                          _participants.add(acceptedUser);
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: widget.onBack ?? () => Navigator.pop(context),
-                    child: const CircleAvatar(
-                      radius: 20,
-                      backgroundImage: NetworkImage(
-                        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.primary),
+                        onPressed: () async {
+                          final acceptedUser = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => JoinRequestsScreen(tripData: widget.tripData),
+                            ),
+                          );
+                          if (acceptedUser != null && acceptedUser is Map<String, dynamic>) {
+                            _fetchParticipants();
+                          } else {
+                            // Fetch again anyway in case they accepted/rejected but it didn't return the exact user object
+                            _fetchParticipants();
+                          }
+                        },
                       ),
+                      if (_pendingRequestsCount > 0)
+                        Positioned(
+                          right: 4,
+                          top: 4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFEF4444), // red
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Center(
+                              child: Text(
+                                _pendingRequestsCount > 99 ? '99+' : _pendingRequestsCount.toString(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  // Profile Picture
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const Scaffold(
+                            backgroundColor: Color(0xFFF8FAFC),
+                            body: ProfileScreen(),
+                          ),
+                        ),
+                      );
+                    },
+                    child: CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Colors.grey[200],
+                      backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.profilePhotoUrl, fallbackName: 'User')),
+                      child: null,
                     ),
                   ),
                 ],
               ),
             ),
 
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            if (_isLoading)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Analytics Divs Row
                     Row(
@@ -415,7 +463,9 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                                   leading: CircleAvatar(
                                     radius: 22,
-                                    backgroundImage: NetworkImage(member['avatar']),
+                                    backgroundImage: CachedNetworkImageProvider(
+                                      ImageUtils.getOptimizedImageUrl(member['avatar'] ?? 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(member['name'] ?? 'User')}')
+                                    ),
                                   ),
                                   title: Row(
                                     children: [

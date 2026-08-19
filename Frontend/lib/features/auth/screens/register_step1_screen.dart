@@ -17,6 +17,7 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
+  String _selectedGender = 'prefer_not_to_say';
   File? _profileImage;
 
   Future<void> _pickImage(ImageSource source) async {
@@ -253,6 +254,37 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
                       hintText: 'Enter your email address',
                     ),
                   ),
+                  const SizedBox(height: 20),
+
+                  // Gender Field
+                  const Text(
+                    'Gender',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _selectedGender,
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.transgender_outlined, size: 22),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'male', child: Text('Male')),
+                      DropdownMenuItem(value: 'female', child: Text('Female')),
+                      DropdownMenuItem(value: 'other', child: Text('Other')),
+                      DropdownMenuItem(value: 'prefer_not_to_say', child: Text('Prefer not to say')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() {
+                          _selectedGender = val;
+                        });
+                      }
+                    },
+                  ),
                   const SizedBox(height: 32),
 
                   // Next Button
@@ -275,6 +307,7 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
                         'lastName': lastName.isEmpty ? firstName : lastName,
                         'email': _emailController.text.trim(),
                         'phone': _phoneController.text.trim(),
+                        'gender': _selectedGender,
                       };
 
                       if (_profileImage != null) {

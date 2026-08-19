@@ -98,6 +98,52 @@ class AuthService {
     }
   }
 
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    try {
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}${ApiEndpoints.forgotPassword}');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> verifyForgotPasswordOtp(String email, String otp) async {
+    try {
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}${ApiEndpoints.verifyForgotPasswordOtp}');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'otp': otp}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPassword(String email, String otp, String newPassword) async {
+    try {
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}${ApiEndpoints.resetPassword}');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'otp': otp, 'newPassword': newPassword}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+
   Future<void> _saveTokens(String accessToken, String refreshToken) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access_token', accessToken);

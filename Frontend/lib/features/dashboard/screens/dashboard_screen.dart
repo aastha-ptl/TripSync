@@ -4,8 +4,16 @@ import '../../expenses/screens/expense_screen.dart';
 import '../../calendar/screens/calendar_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 import '../../trip/screens/trips_screen.dart';
+import '../../trip/screens/trip_details_screen.dart';
+import '../../trip/screens/solo_traveler_dashboard_screen.dart';
+import '../../trip/screens/member_dashboard_screen.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../auth/services/auth_service.dart';
+import '../../trip/services/trip_service.dart';
+import '../../profile/services/user_service.dart';
+import '../../../core/widgets/custom_app_bar.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -19,83 +27,133 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _carouselIndex = 0;
   final PageController _pageController = PageController();
 
-  final List<Map<String, dynamic>> _upcomingTrips = [
-    {
-      'title': 'Paris Getaway',
-      'location': 'Paris, France',
-      'month': 'MAY',
-      'day': '20',
-      'status': 'Upcoming',
-      'statusColor': const Color(0xFF20C060),
-      'imageUrl': 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=600&auto=format&fit=crop&q=60',
-      'daysLeft': 'Starts in 4 days',
-      'members': const [
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=60',
-        'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&auto=format&fit=crop&q=60',
-        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=60',
-      ],
-      'extraMembers': '+2',
-    },
-    {
-      'title': 'Bali Adventure',
-      'location': 'Bali, Indonesia',
-      'month': 'JUN',
-      'day': '10',
-      'status': 'Upcoming',
-      'statusColor': const Color(0xFF1E5AE6),
-      'imageUrl': 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=600&auto=format&fit=crop&q=60',
-      'daysLeft': 'Starts in 25 days',
-      'members': const [
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=60',
-        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&auto=format&fit=crop&q=60',
-      ],
-      'extraMembers': '',
-    },
-    {
-      'title': 'New York City',
-      'location': 'New York, USA',
-      'month': 'APR',
-      'day': '05',
-      'status': 'Completed',
-      'statusColor': Colors.orange,
-      'imageUrl': 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=600&auto=format&fit=crop&q=60',
-      'daysLeft': 'Completed',
-      'members': const [
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=60',
-      ],
-      'extraMembers': '+1',
-    },
-  ];
+  List<Map<String, dynamic>> _upcomingTrips = [];
+  List<Map<String, dynamic>> _allTrips = [];
+  int _upcomingCount = 0;
+  int _ongoingCount = 0;
+  int _completedCount = 0;
+  bool _isLoading = true;
+  final TripService _tripService = TripService();
+  final UserService _userService = UserService();
+  String? _profilePhotoUrl;
 
-  final List<Map<String, dynamic>> _allTrips = [
-    {
-      'title': 'Switzerland Trip',
-      'location': 'Switzerland',
-      'dates': 'Mar 15 - Mar 22, 2025',
-      'status': 'Completed',
-      'statusColor': const Color(0xFFE6F7ED),
-      'textColor': const Color(0xFF20C060),
-      'imageUrl': 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&auto=format&fit=crop&q=60',
-    },
-    {
-      'title': 'Greece Escape',
-      'location': 'Greece',
-      'dates': 'Apr 10 - Apr 18, 2025',
-      'status': 'Upcoming',
-      'statusColor': const Color(0xFFE8F0FE),
-      'textColor': const Color(0xFF1E5AE6),
-      'imageUrl': 'https://images.unsplash.com/photo-1533105079780-92b9be482077?w=400&auto=format&fit=crop&q=60',
-    },
-    {
-      'title': 'Bali Adventure',
-      'location': 'Indonesia',
-      'dates': 'May 25 - Jun 01, 2025',
-      'status': 'Upcoming',
-      'statusColor': const Color(0xFFE8F0FE),
-      'textColor': const Color(0xFF1E5AE6),
-      'imageUrl': 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&auto=format&fit=crop&q=60',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchTrips();
+    _fetchProfile();
+  }
+
+  Future<void> _fetchProfile() async {
+    final response = await _userService.getProfile();
+    if (mounted && response['success'] == true) {
+      setState(() {
+        _profilePhotoUrl = response['data']['profilePhoto'];
+      });
+    }
+  }
+
+  Future<void> _fetchTrips() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final response = await _tripService.getTrips();
+    if (mounted) {
+      if (response['success'] == true) {
+        final List<dynamic> data = response['data'];
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        final fullMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        
+        List<Map<String, dynamic>> all = [];
+        List<Map<String, dynamic>> upcoming = [];
+        int upcomingCount = 0;
+        int ongoingCount = 0;
+        int completedCount = 0;
+
+        for (var trip in data) {
+          final rawStartDate = DateTime.parse(trip['startDate']);
+          final rawEndDate = DateTime.parse(trip['endDate']);
+          final startDate = DateTime(rawStartDate.year, rawStartDate.month, rawStartDate.day);
+          final endDate = DateTime(rawEndDate.year, rawEndDate.month, rawEndDate.day);
+          
+          String status = 'Ongoing';
+          Color statusColor = const Color(0xFF1E5AE6); // Default for ongoing
+          Color textColor = Colors.white;
+          
+          if (today.isBefore(startDate)) {
+            status = 'Upcoming';
+            statusColor = const Color(0xFF20C060);
+            upcomingCount++;
+          } else if (today.isAfter(endDate)) {
+            status = 'Completed';
+            statusColor = Colors.orange;
+            completedCount++;
+          } else {
+            ongoingCount++;
+          }
+
+          String imageUrl = trip['coverImage'] ?? 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&auto=format&fit=crop&q=60';
+          String location = 'Trip Location';
+          
+          all.add({
+            'id': trip['_id'],
+            '_id': trip['_id'],
+            'startDate': trip['startDate'],
+            'endDate': trip['endDate'],
+            'title': trip['name'] ?? 'Untitled',
+            'name': trip['name'] ?? 'Untitled',
+            'location': location,
+            'dates': '${fullMonths[startDate.month - 1]} ${startDate.day} - ${fullMonths[endDate.month - 1]} ${endDate.day}, ${endDate.year}',
+            'status': status,
+            'statusColor': statusColor.withOpacity(0.1),
+            'textColor': statusColor,
+            'imageUrl': imageUrl,
+            'role': trip['participantRole'] ?? 'Member',
+          });
+
+          if (status == 'Upcoming' || status == 'Ongoing') {
+            upcoming.add({
+              'id': trip['_id'],
+              '_id': trip['_id'],
+              'startDate': trip['startDate'],
+              'endDate': trip['endDate'],
+              'title': trip['name'] ?? 'Untitled',
+              'name': trip['name'] ?? 'Untitled',
+              'location': location,
+              'month': months[startDate.month - 1],
+              'day': startDate.day.toString().padLeft(2, '0'),
+              'status': status,
+              'statusColor': statusColor,
+              'imageUrl': imageUrl,
+              'daysLeft': '',
+              'role': trip['participantRole'] ?? 'Member',
+              'members': const [],
+              'extraMembers': '',
+            });
+          }
+        }
+
+        setState(() {
+          _allTrips = all;
+          _upcomingTrips = upcoming;
+          _upcomingCount = upcomingCount;
+          _ongoingCount = ongoingCount;
+          _completedCount = completedCount;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message'] ?? 'Failed to load trips')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -143,28 +201,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return SafeArea(
       child: Column(
         children: [
-          _buildHeader(),
+          CustomAppBar(
+            profilePhotoUrl: _profilePhotoUrl,
+            onProfileTap: () {
+              setState(() {
+                _currentIndex = 4;
+              });
+            },
+          ),
           Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 20),
-                    _buildQuickNav(),
-                    const SizedBox(height: 24),
-                    _buildJoinTripBanner(),
-                    const SizedBox(height: 24),
-                    _buildUpcomingSection(),
-                    const SizedBox(height: 24),
-                    _buildAllTripsSection(),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
+            child: _isLoading 
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 20),
+                          _buildQuickNav(),
+                          const SizedBox(height: 24),
+                          _buildJoinTripBanner(),
+                          const SizedBox(height: 24),
+                          if (_upcomingTrips.isNotEmpty) _buildUpcomingSection(),
+                          if (_upcomingTrips.isNotEmpty) const SizedBox(height: 24),
+                          if (_allTrips.isNotEmpty) _buildAllTripsSection(),
+                          if (_allTrips.isNotEmpty) const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -172,141 +239,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
 
-  Widget _buildHeader({String? title}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        // App Logo
-        title != null
-            ? Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      height: 56,
-                      width: 56,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              )
-            : Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      height: 56,
-                      width: 56,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Row(
-                    children: [
-                      const Text(
-                        'Trip',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      Text(
-                        'Sync',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.secondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
 
-        // Notifications & Profile
-        Row(
-          children: [
-            Stack(
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.notifications_outlined,
-                    color: AppColors.textPrimary,
-                    size: 28,
-                  ),
-                  onPressed: () {},
-                ),
-                Positioned(
-                  right: 12,
-                  top: 12,
-                  child: Container(
-                    height: 8,
-                    width: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1E5AE6),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                )
-              ],
-            ),
-            IconButton(
-              icon: const Icon(
-                Icons.logout,
-                color: AppColors.textPrimary,
-                size: 24,
-              ),
-              onPressed: () async {
-                await AuthService().logout();
-                if (context.mounted) {
-                  Navigator.pushReplacementNamed(context, AppRoutes.login);
-                }
-              },
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _currentIndex = 4;
-                });
-              },
-              child: const CircleAvatar(
-                radius: 20,
-                backgroundImage: NetworkImage(
-                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
 
 
 
@@ -316,7 +249,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Expanded(
           child: _TripStatCard(
             title: 'Upcoming',
-            count: '6',
+            count: _upcomingCount.toString(),
             themeColor: const Color(0xFF20C060),
             backgroundColor: const Color(0xFFF2FBF6),
             borderColor: const Color(0xFFE2F7EB),
@@ -328,7 +261,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Expanded(
           child: _TripStatCard(
             title: 'Ongoing',
-            count: '1',
+            count: _ongoingCount.toString(),
             themeColor: const Color(0xFF1E5AE6),
             backgroundColor: const Color(0xFFF3F7FE),
             borderColor: const Color(0xFFE5EFFF),
@@ -340,7 +273,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Expanded(
           child: _TripStatCard(
             title: 'Completed',
-            count: '15',
+            count: _completedCount.toString(),
             themeColor: const Color(0xFF8B5CF6),
             backgroundColor: const Color(0xFFF8F5FF),
             borderColor: const Color(0xFFF0EBFF),
@@ -464,27 +397,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
             itemCount: _upcomingTrips.length,
             itemBuilder: (context, index) {
               final trip = _upcomingTrips[index];
-              return Container(
-                margin: const EdgeInsets.only(right: 12),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Stack(
+              return GestureDetector(
+                onTap: () => _navigateToTripDashboard(trip),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 12),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Stack(
                     children: [
                       // Image
-                      Image.network(
-                        trip['imageUrl'],
+                      CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(trip['imageUrl']),
                         fit: BoxFit.cover,
                         width: double.infinity,
                         height: double.infinity,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            color: Colors.grey[200],
-                            child: const Center(
-                                child: CircularProgressIndicator(),
-                            ),
-                          );
-                        },
+                        placeholder: (context, url) => Container(
+                          color: Colors.grey[200],
+                          child: const Center(
+                              child: CircularProgressIndicator(),
+                          ),
+                        ),
                       ),
                       // Gradient Overlay
                       Container(
@@ -592,7 +523,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
                   ),
                 ),
-              );
+              ));
             },
           ),
         ),
@@ -631,7 +562,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             child: CircleAvatar(
               radius: 12,
-              backgroundImage: NetworkImage(imageUrls[i]),
+              backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(imageUrls[i])),
             ),
           ),
         ),
@@ -726,26 +657,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
           itemCount: _allTrips.length,
           itemBuilder: (context, index) {
             final trip = _allTrips[index];
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
+            return GestureDetector(
+              onTap: () => _navigateToTripDashboard(trip),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      trip['imageUrl'],
+                    child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(trip['imageUrl']),
                       width: 80,
                       height: 80,
                       fit: BoxFit.cover,
@@ -839,11 +771,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
-            );
+            ));
           },
         ),
       ],
     );
+  }
+
+  void _navigateToTripDashboard(Map<String, dynamic> trip) {
+    if (trip['id'] == null) return;
+    
+    final role = trip['role']?.toString().toLowerCase() ?? 'member';
+    
+    if (role == 'admin' || role == 'creator' || role == 'tripleader') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TripDetailsScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+          ),
+        ),
+      );
+    } else if (role == 'solotraveler' || role == 'solo_traveler') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SoloTravelerDashboardScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+          ),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MemberDashboardScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+          ),
+        ),
+      );
+    }
   }
 
 

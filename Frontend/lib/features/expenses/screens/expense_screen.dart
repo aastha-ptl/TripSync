@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../profile/services/user_service.dart';
+import '../../../core/widgets/custom_app_bar.dart';
 
 class ExpenseScreen extends StatefulWidget {
   const ExpenseScreen({super.key});
@@ -104,13 +106,35 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     {'name': 'Riya Gupta', 'amount': '₹1,200', 'color': Color(0xFF20C060)},
   ];
 
+  final UserService _userService = UserService();
+  String? _profilePhotoUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfile();
+  }
+
+  Future<void> _fetchProfile() async {
+    final response = await _userService.getProfile();
+    if (mounted && response['success'] == true) {
+      setState(() {
+        _profilePhotoUrl = response['data']['profilePhoto'];
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(),
+            CustomAppBar(
+              title: 'Expense',
+              profilePhotoUrl: _profilePhotoUrl,
+            ),
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
@@ -141,90 +165,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-        // App Logo
-        Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/images/logo.png',
-                height: 56,
-                width: 56,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Row(
-              children: const [
-                Text(
-                  'Expense',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
 
-        // Notifications & Profile
-        Row(
-          children: [
-            Stack(
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.notifications_outlined,
-                    color: AppColors.textPrimary,
-                    size: 28,
-                  ),
-                  onPressed: () {},
-                ),
-                Positioned(
-                  right: 12,
-                  top: 12,
-                  child: Container(
-                    height: 8,
-                    width: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1E5AE6),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                )
-              ],
-            ),
-            const SizedBox(width: 8),
-            const CircleAvatar(
-              radius: 20,
-              backgroundImage: NetworkImage(
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
 
   // --- Filters ---
   Widget _buildFilters() {

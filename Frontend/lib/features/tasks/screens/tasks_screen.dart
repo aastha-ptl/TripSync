@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class TasksScreen extends StatefulWidget {
   const TasksScreen({super.key});
@@ -325,7 +327,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                         children: [
                                           CircleAvatar(
                                             radius: 8,
-                                            backgroundImage: NetworkImage(item['avatar']),
+                                            backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(item['avatar'])),
                                           ),
                                           const SizedBox(width: 6),
                                           Text(

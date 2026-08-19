@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
-
+import '../../../core/theme/app_colors.dart';
+import '../../trip/services/trip_service.dart';
+import '../../profile/services/user_service.dart';
+import '../../../core/widgets/custom_app_bar.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 class CalendarScreen extends StatefulWidget {
   final VoidCallback onProfileTap;
 
@@ -13,36 +18,94 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedMonth = DateTime.now();
   final List<Map<String, dynamic>> _calendarDays = [];
-
-  DateTime _ongoingStart = DateTime.now().subtract(const Duration(days: 2));
-  DateTime _ongoingEnd = DateTime.now().add(const Duration(days: 2));
-  DateTime _upcomingStart = DateTime.now().add(const Duration(days: 5));
-  DateTime _upcomingEnd = DateTime.now().add(const Duration(days: 9));
-  DateTime _completedStart = DateTime.now().subtract(const Duration(days: 10));
-  DateTime _completedEnd = DateTime.now().subtract(const Duration(days: 6));
+  
+  List<Map<String, dynamic>> _userTrips = [];
+  bool _isLoading = true;
+  final TripService _tripService = TripService();
+  final UserService _userService = UserService();
+  String? _profilePhotoUrl;
 
   @override
   void initState() {
     super.initState();
-    _generateCalendarDays();
+    _fetchTrips();
+    _fetchProfile();
+  }
+
+  Future<void> _fetchProfile() async {
+    final response = await _userService.getProfile();
+    if (mounted && response['success'] == true) {
+      setState(() {
+        _profilePhotoUrl = response['data']['profilePhoto'];
+      });
+    }
+  }
+
+  Future<void> _fetchTrips() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final response = await _tripService.getTrips();
+    if (mounted) {
+      if (response['success'] == true) {
+        final List<dynamic> data = response['data'];
+        
+        setState(() {
+          _userTrips = data.map((trip) {
+            final rawStartDate = DateTime.parse(trip['startDate']);
+            final rawEndDate = DateTime.parse(trip['endDate']);
+            final startDate = DateTime(rawStartDate.year, rawStartDate.month, rawStartDate.day);
+            final endDate = DateTime(rawEndDate.year, rawEndDate.month, rawEndDate.day);
+            
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
+            
+            String status = 'ongoing';
+            if (today.isBefore(startDate)) {
+              status = 'upcoming';
+            } else if (today.isAfter(endDate)) {
+              status = 'completed';
+            }
+
+            return {
+              'name': trip['name'] ?? 'Untitled Trip',
+              'location': 'Trip Location', // Not in schema, placeholder
+              'startDate': startDate,
+              'endDate': endDate,
+              'status': status,
+              'coverImage': trip['coverImage'] ?? 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&auto=format&fit=crop&q=60',
+            };
+          }).toList();
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message'] ?? 'Failed to load trips')),
+        );
+      }
+    }
   }
 
   String _getDayStatus(DateTime date) {
     final compareDate = DateTime(date.year, date.month, date.day);
-    final ongoingStart = DateTime(_ongoingStart.year, _ongoingStart.month, _ongoingStart.day);
-    final ongoingEnd = DateTime(_ongoingEnd.year, _ongoingEnd.month, _ongoingEnd.day);
-    final upcomingStart = DateTime(_upcomingStart.year, _upcomingStart.month, _upcomingStart.day);
-    final upcomingEnd = DateTime(_upcomingEnd.year, _upcomingEnd.month, _upcomingEnd.day);
-    final completedStart = DateTime(_completedStart.year, _completedStart.month, _completedStart.day);
-    final completedEnd = DateTime(_completedEnd.year, _completedEnd.month, _completedEnd.day);
+    
+    // Check if the date falls in any trip
+    for (var trip in _userTrips) {
+      final startDate = trip['startDate'] as DateTime;
+      final endDate = trip['endDate'] as DateTime;
+      
+      final tripStart = DateTime(startDate.year, startDate.month, startDate.day);
+      final tripEnd = DateTime(endDate.year, endDate.month, endDate.day);
 
-    if (!compareDate.isBefore(ongoingStart) && !compareDate.isAfter(ongoingEnd)) {
-      return 'ongoing';
-    } else if (!compareDate.isBefore(upcomingStart) && !compareDate.isAfter(upcomingEnd)) {
-      return 'upcoming';
-    } else if (!compareDate.isBefore(completedStart) && !compareDate.isAfter(completedEnd)) {
-      return 'completed';
+      if (!compareDate.isBefore(tripStart) && !compareDate.isAfter(tripEnd)) {
+        return trip['status'];
+      }
     }
+    
     return 'none';
   }
 
@@ -120,120 +183,41 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return SafeArea(
       child: Column(
         children: [
-          _buildHeader(title: 'Calendar'),
+          CustomAppBar(
+            title: 'Calendar',
+            profilePhotoUrl: _profilePhotoUrl,
+            onProfileTap: widget.onProfileTap,
+          ),
           Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 20),
-                    _buildCalendarControls(),
-                    const SizedBox(height: 20),
-                    _buildCalendarGrid(),
-                    const SizedBox(height: 20),
-                    _buildCalendarLegend(),
-                    const SizedBox(height: 24),
-                    _buildOngoingTripCard(),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 20),
+                          _buildCalendarControls(),
+                          const SizedBox(height: 20),
+                          _buildCalendarGrid(),
+                          const SizedBox(height: 20),
+                          _buildCalendarLegend(),
+                          const SizedBox(height: 24),
+                          _buildOngoingTripCard(),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader({String? title}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-        Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/images/logo.png',
-                height: 56,
-                width: 56,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  height: 56,
-                  width: 56,
-                  color: Colors.grey[200],
-                  child: const Icon(Icons.map, color: AppColors.primary),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              title ?? 'Calendar',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            Stack(
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.notifications_outlined,
-                    color: AppColors.textPrimary,
-                    size: 28,
-                  ),
-                  onPressed: () {},
-                ),
-                Positioned(
-                  right: 12,
-                  top: 12,
-                  child: Container(
-                    height: 8,
-                    width: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1E5AE6),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                )
-              ],
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: widget.onProfileTap,
-              child: const CircleAvatar(
-                radius: 20,
-                backgroundImage: NetworkImage(
-                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
+
 
   String _getCurrentMonthYear() {
     final months = [
@@ -274,12 +258,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
               children: [
                 const Icon(Icons.calendar_today_outlined, size: 16, color: Color(0xFF0F172A)),
                 const SizedBox(width: 8),
-                Text(
-                  _getCurrentMonthYear(),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
+                Flexible(
+                  child: Text(
+                    _getCurrentMonthYear(),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -506,9 +493,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildOngoingTripCard() {
-    final totalDays = _ongoingEnd.difference(_ongoingStart).inDays + 1;
-    final currentDay = _calculateCurrentDayOfTrip(_ongoingStart, _ongoingEnd);
+    // Find an ongoing trip
+    Map<String, dynamic>? displayTrip;
+    
+    for (var trip in _userTrips) {
+      if (trip['status'] == 'ongoing') {
+        displayTrip = trip;
+        break;
+      }
+    }
+    
+    // If no ongoing trip, find an upcoming trip
+    if (displayTrip == null) {
+      for (var trip in _userTrips) {
+        if (trip['status'] == 'upcoming') {
+          displayTrip = trip;
+          break;
+        }
+      }
+    }
+
+    if (displayTrip == null) {
+      return const SizedBox.shrink(); // Hide the card if there are no ongoing or upcoming trips
+    }
+
+    final startDate = displayTrip['startDate'] as DateTime;
+    final endDate = displayTrip['endDate'] as DateTime;
+    final totalDays = endDate.difference(startDate).inDays + 1;
+    final currentDay = _calculateCurrentDayOfTrip(startDate, endDate);
     final progress = totalDays > 0 ? (currentDay / totalDays).clamp(0.0, 1.0) : 0.0;
+
+    final isOngoing = displayTrip['status'] == 'ongoing';
+    final cardTitle = isOngoing ? 'Ongoing Trip' : 'Upcoming Trip';
 
     return Container(
       decoration: BoxDecoration(
@@ -545,9 +561,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
-                      'Ongoing Trip',
-                      style: TextStyle(
+                    Text(
+                      cardTitle,
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF0F172A),
@@ -586,8 +602,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Image.network(
-                     'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=300&auto=format&fit=crop&q=60',
+                  child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(displayTrip['coverImage']),
                     width: 90,
                     height: 90,
                     fit: BoxFit.cover,
@@ -600,18 +615,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: const [
+                        children: [
                           Expanded(
                             child: Text(
-                              'Goa Beach Trip',
-                              style: TextStyle(
+                              displayTrip['name'],
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 color: Color(0xFF0F172A),
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          Icon(
+                          const Icon(
                             Icons.more_vert,
                             color: Color(0xFF94A3B8),
                             size: 20,
@@ -628,7 +645,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ),
                           SizedBox(width: 4),
                           Text(
-                            'Goa, India',
+                            'Trip Location', // Update this if location is added to backend
                             style: TextStyle(
                               fontSize: 13,
                               color: Color(0xFF64748B),
@@ -646,7 +663,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            _formatTripDates(_ongoingStart, _ongoingEnd),
+                            _formatTripDates(startDate, endDate),
                             style: const TextStyle(
                               fontSize: 12,
                               color: Color(0xFF64748B),
@@ -654,45 +671,47 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'Day $currentDay of $totalDays',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E5AE6),
+                      if (isOngoing) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Day $currentDay of $totalDays',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1E5AE6),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            '${(progress * 100).toInt()}% Completed',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF475569),
+                            const SizedBox(width: 10),
+                            Text(
+                              '${(progress * 100).toInt()}% Completed',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF475569),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF1E5AE6)),
-                          minHeight: 6,
+                          ],
                         ),
-                      ),
+                        const SizedBox(height: 10),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            backgroundColor: const Color(0xFFF1F5F9),
+                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF1E5AE6)),
+                            minHeight: 6,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

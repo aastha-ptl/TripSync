@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/routes/app_routes.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class DestinationsScreen extends StatefulWidget {
   const DestinationsScreen({super.key});
@@ -88,12 +90,11 @@ class _DestinationsScreenState extends State<DestinationsScreen> {
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=150&auto=format&fit=crop&q=80',
+                            child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl('https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=150&auto=format&fit=crop&q=80'),
                               height: 48,
                               width: 48,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
+                              errorWidget: (context, url, error) => Container(
                                 height: 48,
                                 width: 48,
                                 color: Colors.grey[200],
@@ -143,11 +144,9 @@ class _DestinationsScreenState extends State<DestinationsScreen> {
                   const SizedBox(width: 12),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: const CircleAvatar(
+                    child: CircleAvatar(
                       radius: 20,
-                      backgroundImage: NetworkImage(
-                        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-                      ),
+                      backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',)),
                     ),
                   ),
                 ],
@@ -182,12 +181,11 @@ class _DestinationsScreenState extends State<DestinationsScreen> {
                           children: [
                             ClipRRect(
                               borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                              child: Image.network(
-                                dest['image'],
+                              child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(dest['image']),
                                 height: 160,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
+                                errorWidget: (context, url, error) => Container(
                                   height: 160,
                                   width: double.infinity,
                                   color: Colors.grey[200],

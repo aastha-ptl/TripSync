@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 
+import '../services/itinerary_service.dart';
+
 class AddEventScreen extends StatefulWidget {
-  const AddEventScreen({super.key});
+  final Map<String, dynamic>? tripData;
+
+  const AddEventScreen({super.key, this.tripData});
 
   @override
   State<AddEventScreen> createState() => _AddEventScreenState();
@@ -17,18 +21,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
   final TextEditingController _costController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
 
+  final TextEditingController _dateController = TextEditingController();
+  DateTime? _selectedDate;
+  TimeOfDay? _selectedTime;
   String _selectedCategory = 'sightseeing';
-  String _selectedDay = 'Day 2 (May 21)';
-
-  final List<String> _daysList = [
-    'Day 1 (May 20)',
-    'Day 2 (May 21)',
-    'Day 3 (May 22)',
-    'Day 4 (May 23)',
-    'Day 5 (May 24)',
-    'Day 6 (May 25)',
-    'Day 7 (May 26)',
-  ];
 
   final List<Map<String, dynamic>> _categories = [
     {'id': 'sightseeing', 'label': 'Sightseeing', 'icon': Icons.image_search_outlined, 'color': Color(0xFF0EA5E9)},
@@ -42,30 +38,82 @@ class _AddEventScreenState extends State<AddEventScreen> {
     _titleController.dispose();
     _locationController.dispose();
     _timeController.dispose();
+    _dateController.dispose();
     _costController.dispose();
     _notesController.dispose();
     super.dispose();
   }
 
-  void _saveEvent() {
+  bool _isSaving = false;
+  final ItineraryService _itineraryService = ItineraryService();
+
+  Future<void> _saveEvent() async {
     if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: const [
-              Icon(Icons.check_circle_outline, color: Colors.white),
-              SizedBox(width: 10),
-              Text('Event successfully added to itinerary!'),
-            ],
+      final tripId = widget.tripData?['_id'];
+      if (tripId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: No trip data available')),
+        );
+        return;
+      }
+
+      setState(() {
+        _isSaving = true;
+      });
+
+      // Parse date to a format the backend can use
+      String formattedDate = '';
+      if (_selectedDate != null) {
+        formattedDate = "${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}";
+      }
+
+      // Time comes from the controller text directly (e.g., "10:30 AM")
+      final timeText = _timeController.text;
+
+      final eventData = {
+        'title': _titleController.text.trim(),
+        'location': _locationController.text.trim(),
+        'date': formattedDate,
+        'time': timeText,
+        'type': _selectedCategory,
+        'cost': _costController.text.trim(),
+        'notes': _notesController.text.trim(),
+      };
+
+      final response = await _itineraryService.addActivity(tripId, eventData);
+
+      setState(() {
+        _isSaving = false;
+      });
+
+      if (response['success'] == true) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.check_circle_outline, color: Colors.white),
+                SizedBox(width: 10),
+                Text('Event successfully added to itinerary!'),
+              ],
+            ),
+            backgroundColor: AppColors.secondary,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
-          backgroundColor: AppColors.secondary,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+        );
+        Navigator.pop(context, true);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['message'] ?? 'Failed to add event'),
+            backgroundColor: Colors.red,
           ),
-        ),
-      );
-      Navigator.pop(context);
+        );
+      }
     }
   }
 
@@ -108,15 +156,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
               _buildSectionTitle('Date & Timing'),
               const SizedBox(height: 12),
-              _buildDayDropdown(),
+              _buildDateField(),
               const SizedBox(height: 16),
-              _buildInputField(
-                controller: _timeController,
-                label: 'Time',
-                hint: 'e.g. 10:30 AM, 04:00 PM',
-                icon: Icons.access_time_outlined,
-                validator: (val) => val == null || val.isEmpty ? 'Time is required' : null,
-              ),
+              _buildTimeField(),
               const SizedBox(height: 24),
 
               _buildSectionTitle('Budget & Notes'),
@@ -285,9 +327,18 @@ class _AddEventScreenState extends State<AddEventScreen> {
     );
   }
 
-  Widget _buildDayDropdown() {
+  bool _isTimeInvalid(DateTime date, TimeOfDay time) {
+    final now = DateTime.now();
+    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+      if (time.hour < now.hour || (time.hour == now.hour && time.minute < now.minute)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Widget _buildDateField() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -300,29 +351,101 @@ class _AddEventScreenState extends State<AddEventScreen> {
           ),
         ],
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButtonFormField<String>(
-          value: _selectedDay,
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            prefixIcon: Icon(Icons.calendar_today_outlined, color: AppColors.textSecondary, size: 18),
-            labelText: 'Trip Day',
-            labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+      child: TextFormField(
+        controller: _dateController,
+        readOnly: true,
+        validator: (val) => val == null || val.isEmpty ? 'Date is required' : null,
+        onTap: () async {
+          final DateTime now = DateTime.now();
+          // Reset time to start of day for comparison
+          final DateTime today = DateTime(now.year, now.month, now.day);
+          final DateTime? picked = await showDatePicker(
+            context: context,
+            initialDate: _selectedDate ?? today,
+            firstDate: today,
+            lastDate: DateTime(now.year + 5),
+          );
+          if (picked != null) {
+            setState(() {
+              _selectedDate = picked;
+              _dateController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+              if (_selectedTime != null && _isTimeInvalid(picked, _selectedTime!)) {
+                _selectedTime = null;
+                _timeController.clear();
+              }
+            });
+          }
+        },
+        style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+        decoration: const InputDecoration(
+          labelText: 'Trip Date',
+          labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          hintText: 'Select Date',
+          hintStyle: TextStyle(color: AppColors.textLight, fontSize: 13),
+          prefixIcon: Icon(Icons.calendar_today_outlined, color: AppColors.textSecondary, size: 18),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.01),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-          style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
-          items: _daysList.map((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(value),
+        ],
+      ),
+      child: TextFormField(
+        controller: _timeController,
+        readOnly: true,
+        validator: (val) {
+          if (val == null || val.isEmpty) return 'Time is required';
+          return null;
+        },
+        onTap: () async {
+          if (_selectedDate == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please select a date first')),
             );
-          }).toList(),
-          onChanged: (newValue) {
-            if (newValue != null) {
-              setState(() {
-                _selectedDay = newValue;
-              });
+            return;
+          }
+          final TimeOfDay? picked = await showTimePicker(
+            context: context,
+            initialTime: _selectedTime ?? TimeOfDay.now(),
+          );
+          if (picked != null) {
+            if (_isTimeInvalid(_selectedDate!, picked)) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Cannot select a past time for today')),
+                );
+              }
+              return;
             }
-          },
+            setState(() {
+              _selectedTime = picked;
+              _timeController.text = picked.format(context);
+            });
+          }
+        },
+        style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+        decoration: const InputDecoration(
+          labelText: 'Time',
+          labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          hintText: 'Select Time',
+          hintStyle: TextStyle(color: AppColors.textLight, fontSize: 13),
+          prefixIcon: Icon(Icons.access_time_outlined, color: AppColors.textSecondary, size: 18),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
       ),
     );
@@ -348,7 +471,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
         ],
       ),
       child: ElevatedButton(
-        onPressed: _saveEvent,
+        onPressed: _isSaving ? null : _saveEvent,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
@@ -356,14 +479,20 @@ class _AddEventScreenState extends State<AddEventScreen> {
             borderRadius: BorderRadius.circular(16),
           ),
         ),
-        child: const Text(
-          'Save Event',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        child: _isSaving 
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              )
+            : const Text(
+                'Save Event',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
       ),
     );
   }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/member_location.dart';
 import '../models/trip_location.dart';
 import '../../../core/theme/app_colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class LocationInfoCard extends StatelessWidget {
   final MemberLocation? member;
@@ -77,7 +79,7 @@ class LocationInfoCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 26,
-                  backgroundImage: NetworkImage(member!.profileImage),
+                  backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(member!.profileImage)),
                 ),
                 const SizedBox(width: 14),
                 Expanded(

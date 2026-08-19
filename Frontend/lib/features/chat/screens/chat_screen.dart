@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../models/message.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -326,7 +328,7 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!message.isMe) ...[
             CircleAvatar(
               radius: 16,
-              backgroundImage: NetworkImage(message.senderAvatar),
+              backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(message.senderAvatar)),
             ),
             const SizedBox(width: 8),
           ],
@@ -354,7 +356,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(width: 8),
             CircleAvatar(
               radius: 16,
-              backgroundImage: NetworkImage(message.senderAvatar),
+              backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(message.senderAvatar)),
             ),
           ],
         ],
@@ -387,8 +389,7 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Image.network(
-              message.attachmentUrl ?? '',
+            CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(message.attachmentUrl ?? ''),
               width: 220,
               height: 150,
               fit: BoxFit.cover,

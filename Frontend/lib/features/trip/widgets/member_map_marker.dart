@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/member_location.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class MemberMapMarker extends StatelessWidget {
   final MemberLocation member;
@@ -43,7 +45,7 @@ class MemberMapMarker extends StatelessWidget {
               backgroundColor: Colors.white,
               child: CircleAvatar(
                 radius: 17,
-                backgroundImage: NetworkImage(member.profileImage),
+                backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(member.profileImage)),
               ),
             ),
             // Small online status dot indicator

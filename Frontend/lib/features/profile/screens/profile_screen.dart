@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/routes/app_routes.dart';
+import '../../auth/services/auth_service.dart';
+import '../services/user_service.dart';
+import 'edit_profile_screen.dart';
+import '../../../core/widgets/custom_app_bar.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -9,22 +16,81 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String _profileName = 'Aastha Patel';
-  String _profilePhone = '+91 98765 43210';
-  String _profileGender = 'Not added';
-  String _profileDob = 'Not added';
-  String _profileCountry = 'Not added';
-  String _profileCity = 'Not added';
-  String _profileBio = 'Not added';
+  Map<String, dynamic>? _profileData;
+  bool _isLoading = true;
+  final UserService _userService = UserService();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfile();
+  }
+
+  Future<void> _fetchProfile() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    final response = await _userService.getProfile();
+    
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+        if (response['success'] == true) {
+          _profileData = response['data'];
+        }
+      });
+    }
+  }
+
+  String _getProfileValue(String key) {
+    if (_profileData == null) return 'Not added';
+    final val = _profileData![key];
+    if (val == null || val.toString().trim().isEmpty) return 'Not added';
+    if (key == 'dateOfBirth') {
+      DateTime dob = DateTime.parse(val.toString());
+      return '${dob.year}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}';
+    }
+    return val.toString();
+  }
+
+  String get _profileName => _profileData != null ? '${_profileData!['firstName']} ${_profileData!['lastName']}' : 'Loading...';
+  String get _profileEmail => _profileData != null ? _profileData!['email'] ?? 'Not added' : 'Loading...';
+  String get _profilePhone => _getProfileValue('phone');
+  String get _profileGender => _getProfileValue('gender');
+  String get _profileDob => _getProfileValue('dateOfBirth');
+  String get _profileCountry => _getProfileValue('country');
+  String get _profileCity => _getProfileValue('city');
+  String get _profileBio => _getProfileValue('bio');
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Column(
         children: [
-          _buildHeader(title: 'Profile'),
+          CustomAppBar(
+            title: 'Profile',
+            profilePhotoUrl: _profileData?['profilePhoto'],
+            extraActions: [
+              IconButton(
+                icon: const Icon(
+                  Icons.logout,
+                  color: AppColors.textPrimary,
+                  size: 24,
+                ),
+                onPressed: () async {
+                  await AuthService().logout();
+                  if (context.mounted) {
+                    Navigator.pushReplacementNamed(context, AppRoutes.login);
+                  }
+                },
+              ),
+            ],
+          ),
           Expanded(
-            child: SingleChildScrollView(
+            child: _isLoading 
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
@@ -48,89 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildHeader({String? title}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-        Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/images/logo.png',
-                height: 56,
-                width: 56,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  height: 56,
-                  width: 56,
-                  color: Colors.grey[200],
-                  child: const Icon(Icons.map, color: AppColors.primary),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              title ?? 'Profile',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            Stack(
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.notifications_outlined,
-                    color: AppColors.textPrimary,
-                    size: 28,
-                  ),
-                  onPressed: () {},
-                ),
-                Positioned(
-                  right: 12,
-                  top: 12,
-                  child: Container(
-                    height: 8,
-                    width: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1E5AE6),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                )
-              ],
-            ),
-            const SizedBox(width: 8),
-            const CircleAvatar(
-              radius: 20,
-              backgroundImage: NetworkImage(
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
+
 
   Widget _buildProfileHeaderCard() {
     return Container(
@@ -165,11 +149,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 3),
                     ),
-                    child: const CircleAvatar(
+                    child: CircleAvatar(
                       radius: 46,
-                      backgroundImage: NetworkImage(
-                        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
-                      ),
+                      backgroundColor: const Color(0xFFE2E8F0),
+                      backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(_profileData!['profilePhoto'], fallbackName: _profileData!['name'])),
+                      child: null,
                     ),
                   ),
                   Positioned(
@@ -240,12 +224,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 10),
                     Row(
-                      children: const [
-                        Icon(Icons.mail_outline, size: 16, color: Color(0xFF64748B)),
-                        SizedBox(width: 8),
+                      children: [
+                        const Icon(Icons.mail_outline, size: 16, color: Color(0xFF64748B)),
+                        const SizedBox(width: 8),
                         Text(
-                          'aastha.patel@gmail.com',
-                          style: TextStyle(
+                          _profileEmail,
+                          style: const TextStyle(
                             fontSize: 13,
                             color: Color(0xFF64748B),
                           ),
@@ -402,7 +386,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildInfoRow(
             icon: Icons.mail_outline,
             label: 'Email (Read Only)',
-            value: 'aastha.patel@gmail.com',
+            value: _profileEmail,
             iconBgColor: const Color(0xFFEFF6FF),
             iconColor: const Color(0xFF1E5AE6),
           ),
@@ -516,160 +500,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showEditProfileForm() {
-    final nameController = TextEditingController(text: _profileName);
-    final phoneController = TextEditingController(text: _profilePhone == 'Not added' ? '' : _profilePhone);
-    final genderController = TextEditingController(text: _profileGender == 'Not added' ? '' : _profileGender);
-    final dobController = TextEditingController(text: _profileDob == 'Not added' ? '' : _profileDob);
-    final countryController = TextEditingController(text: _profileCountry == 'Not added' ? '' : _profileCountry);
-    final cityController = TextEditingController(text: _profileCity == 'Not added' ? '' : _profileCity);
-    final bioController = TextEditingController(text: _profileBio == 'Not added' ? '' : _profileBio);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          padding: EdgeInsets.only(
-            top: 20,
-            left: 24,
-            right: 24,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Edit Profile Details',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Color(0xFF64748B)),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _buildField('Full Name', nameController, Icons.person_outline),
-                _buildField('Phone Number', phoneController, Icons.phone_outlined, keyboardType: TextInputType.phone),
-                _buildField('Gender', genderController, Icons.transgender_outlined),
-                _buildField('Date of Birth', dobController, Icons.calendar_month_outlined),
-                _buildField('Country', countryController, Icons.public_outlined),
-                _buildField('City', cityController, Icons.location_city_outlined),
-                _buildField('Bio / About Me', bioController, Icons.chat_bubble_outline_outlined, maxLines: 3),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _profileName = nameController.text.trim().isEmpty ? 'Aastha Patel' : nameController.text.trim();
-                        _profilePhone = phoneController.text.trim().isEmpty ? 'Not added' : phoneController.text.trim();
-                        _profileGender = genderController.text.trim().isEmpty ? 'Not added' : genderController.text.trim();
-                        _profileDob = dobController.text.trim().isEmpty ? 'Not added' : dobController.text.trim();
-                        _profileCountry = countryController.text.trim().isEmpty ? 'Not added' : countryController.text.trim();
-                        _profileCity = cityController.text.trim().isEmpty ? 'Not added' : cityController.text.trim();
-                        _profileBio = bioController.text.trim().isEmpty ? 'Not added' : bioController.text.trim();
-                      });
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E5AE6),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Save Changes',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildField(String label, TextEditingController controller, IconData icon, {TextInputType? keyboardType, int maxLines = 1}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF475569),
-            ),
-          ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            maxLines: maxLines,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF0F172A),
-            ),
-            decoration: InputDecoration(
-              hintText: 'Enter your $label',
-              prefixIcon: Icon(icon, size: 20, color: const Color(0xFF64748B)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF1E5AE6), width: 1.5),
-              ),
-              filled: true,
-              fillColor: const Color(0xFFF8FAFC),
-            ),
-          ),
-        ],
+  void _showEditProfileForm() async {
+    if (_profileData == null) return;
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditProfileScreen(initialData: _profileData!),
       ),
     );
+    
+    if (result == true) {
+      _fetchProfile(); // Refresh after edit
+    }
   }
 }

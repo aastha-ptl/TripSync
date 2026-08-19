@@ -3,10 +3,21 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/routes/app_routes.dart';
 
+import '../../profile/screens/profile_screen.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
+
 class DocumentsScreen extends StatefulWidget {
   final VoidCallback? onBack;
+  final Map<String, dynamic>? tripData;
+  final String? profilePhotoUrl;
 
-  const DocumentsScreen({super.key, this.onBack});
+  const DocumentsScreen({
+    super.key, 
+    this.onBack,
+    this.tripData,
+    this.profilePhotoUrl,
+  });
 
   @override
   State<DocumentsScreen> createState() => _DocumentsScreenState();
@@ -80,18 +91,23 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=150&auto=format&fit=crop&q=80',
-                      height: 48,
-                      width: 48,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        height: 48,
-                        width: 48,
-                        color: Colors.grey[200],
-                        child: const Icon(Icons.image, color: Colors.grey),
-                      ),
-                    ),
+                    child: widget.tripData != null && widget.tripData!['imageUrl'] != null
+                        ? CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(widget.tripData!['imageUrl']),
+                            height: 48,
+                            width: 48,
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) => Container(
+                              height: 48,
+                              width: 48,
+                              color: Colors.grey[200],
+                              child: const Icon(Icons.image, color: Colors.grey),
+                            ),
+                          )
+                        : CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl('https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=150&auto=format&fit=crop&q=80'),
+                            height: 48,
+                            width: 48,
+                            fit: BoxFit.cover,
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -136,14 +152,24 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          // Profile Picture
           GestureDetector(
-            onTap: widget.onBack ?? () => Navigator.pop(context),
-            child: const CircleAvatar(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const Scaffold(
+                    backgroundColor: Color(0xFFF8FAFC),
+                    body: ProfileScreen(),
+                  ),
+                ),
+              );
+            },
+            child: CircleAvatar(
               radius: 20,
-              backgroundImage: NetworkImage(
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-              ),
+              backgroundColor: Colors.grey[200],
+              backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.profilePhotoUrl, fallbackName: 'User')),
+              child: null,
             ),
           ),
         ],
@@ -258,7 +284,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
                       image: DecorationImage(
-                        image: NetworkImage(url),
+                        image: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(url)),
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -494,7 +520,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               children: [
                 CircleAvatar(
                   radius: 16,
-                  backgroundImage: NetworkImage(avatar),
+                  backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(avatar)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

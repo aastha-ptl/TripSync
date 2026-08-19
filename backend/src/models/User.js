@@ -56,6 +56,25 @@ const userSchema = new mongoose.Schema(
       default: "prefer_not_to_say",
     },
 
+    country: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    city: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    bio: {
+      type: String,
+      trim: true,
+      maxlength: 300,
+      default: "",
+    },
+
     // =====================================
     // AUTHENTICATION
     // =====================================
@@ -80,12 +99,22 @@ const userSchema = new mongoose.Schema(
     },
 
     // =====================================
-    // EMAIL VERIFICATION
+    // EMAIL VERIFICATION & PASSWORD RESET
     // =====================================
 
     isEmailVerified: {
       type: Boolean,
       default: false,
+    },
+
+    resetPasswordOtp: {
+      type: String,
+      default: null,
+    },
+
+    resetPasswordOtpExpires: {
+      type: Date,
+      default: null,
     },
 
     // =====================================

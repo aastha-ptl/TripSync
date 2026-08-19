@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
 import '../services/trip_service.dart';
+import  '../../../core/constants/app_constants.dart';
 
 class AddTripScreen extends StatefulWidget {
   const AddTripScreen({super.key});
@@ -25,6 +26,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
   String? _selectedTripType = 'Friends';
   bool _isUploadingPhoto = false;
   String? _selectedImagePath; // Simulated uploaded image path/name
+  bool _cancelPendingRequest = false;
 
   final List<String> _tripTypes = ['Friends', 'Family', 'Solo', 'Business', 'Couple'];
 
@@ -149,6 +151,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
         'startDate': _startDate!.toIso8601String(),
         'endDate': _endDate!.toIso8601String(),
         'tripType': _selectedTripType,
+        'cancelPendingRequest': _cancelPendingRequest,
         if (_selectedImagePath != null) 'coverImage': _selectedImagePath,
       };
 
@@ -161,8 +164,9 @@ class _AddTripScreenState extends State<AddTripScreen> {
       if (!mounted) return;
 
       if (response['success'] == true) {
-        final inviteLink = response['data']?['inviteLink'];
         final inviteToken = response['data']?['inviteToken'] ?? 'Unknown token';
+        final String? _pcIp = AppConstants.pcIp;
+        final inviteLink = 'http://$_pcIp:5000/join/$inviteToken';
         
         showDialog(
           context: context,
@@ -304,14 +308,254 @@ class _AddTripScreenState extends State<AddTripScreen> {
           ),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(response['message'] ?? 'Failed to create trip'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        if (response['code'] == 'PENDING_OVERLAP') {
+          _showPendingProceedDialog(context, response['tripName'] ?? 'Unknown Trip');
+        } else if (response['message'] == "You are already part of an approved trip during these dates.") {
+          _showOverlapDialog(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response['message'] ?? 'Failed to create trip'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
       }
     }
+  }
+
+  void _showOverlapDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2), // light red
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.event_busy,
+                color: AppColors.error,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Schedule Conflict',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You are already part of an approved trip during these dates. Please choose different dates or manage your existing trips.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Understood'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPendingProceedDialog(BuildContext context, String tripName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.pending_actions,
+                color: Colors.orange,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Pending Join Request',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your request to join the trip "$tripName" for these dates is already sent but not approved yet. Do you want to proceed with creating this new trip?',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textSecondary,
+                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('No'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showCancelPreviousRequestDialog(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Yes'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCancelPreviousRequestDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2), // light red
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.warning_amber_rounded,
+                color: AppColors.error,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Cancel Previous Request',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'If you add this trip, the previous join request will be canceled. Do you want to proceed?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textSecondary,
+                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('No'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context); // Close the dialog
+                      setState(() {
+                        _cancelPendingRequest = true; // Set flag
+                      });
+                      _submitForm(); // Try creating again
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Yes, Cancel It'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override

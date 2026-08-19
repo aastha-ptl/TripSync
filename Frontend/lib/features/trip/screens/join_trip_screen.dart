@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../services/trip_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class JoinTripScreen extends StatefulWidget {
   final String? inviteToken;
@@ -108,7 +110,7 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
               ),
               const SizedBox(height: 20),
               const Text(
-                'Trip Joined!',
+                'Join Request Added!',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -117,7 +119,8 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'You have successfully joined the trip.',
+               'Your trip join request has been added successfully. '
+  'Please wait for the trip leader to approve your request.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
@@ -149,13 +152,78 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
         ),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(response['message'] ?? 'Failed to join trip'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      if (response['message'] == "You are already part of an approved trip during these dates.") {
+        _showOverlapDialog(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['message'] ?? 'Failed to join trip'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
+  }
+
+  void _showOverlapDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2), // light red
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.event_busy,
+                color: AppColors.error,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Schedule Conflict',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You are already part of an approved trip during these dates. Please check your schedule and try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Understood'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -226,12 +294,11 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
                         if (_tripInfo?['coverImage'] != null && _tripInfo!['coverImage'].toString().isNotEmpty) ...[
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              _tripInfo!['coverImage'],
+                            child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(_tripInfo!['coverImage']),
                               width: double.infinity,
                               height: 140,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
+                              errorWidget: (context, url, error) => Container(
                                 height: 140,
                                 color: const Color(0xFFF1F5F9),
                                 child: const Center(child: Icon(Icons.image_not_supported, color: Colors.grey)),

@@ -1,76 +1,159 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 
+import '../../trip/services/trip_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
+
 class JoinRequestsScreen extends StatefulWidget {
-  const JoinRequestsScreen({super.key});
+  final Map<String, dynamic>? tripData;
+
+  const JoinRequestsScreen({super.key, this.tripData});
 
   @override
   State<JoinRequestsScreen> createState() => _JoinRequestsScreenState();
 }
 
 class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
-  final List<Map<String, dynamic>> _pendingRequests = [
-    {
-      'name': 'Karan Malhotra',
-      'type': 'Solo',
-      'group': 'Solo Traveler',
-      'avatar': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 98888 77777',
-      'time': '2h ago',
-    },
-    {
-      'name': 'Sneha Rao',
-      'type': 'Family',
-      'group': 'Rao Family',
-      'avatar': 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 97777 66666',
-      'time': '5h ago',
-    },
-    {
-      'name': 'Amit Sen',
-      'type': 'Family',
-      'group': 'Sen Family',
-      'avatar': 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      'phone': '+91 96666 55555',
-      'time': '1d ago',
-    },
-  ];
+  final TripService _tripService = TripService();
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _pendingRequests = [];
 
-  void _acceptRequest(int index) {
-    final acceptedUser = _pendingRequests[index];
-    setState(() {
-      _pendingRequests.removeAt(index);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${acceptedUser['name']} has been added to the trip!'),
-        backgroundColor: const Color(0xFF20C060),
-      ),
-    );
-
-    Navigator.pop(context, {
-      'name': acceptedUser['name'],
-      'role': 'Member',
-      'type': acceptedUser['type'],
-      'group': acceptedUser['group'],
-      'avatar': acceptedUser['avatar'],
-      'phone': acceptedUser['phone'],
-    });
+  @override
+  void initState() {
+    super.initState();
+    _fetchJoinRequests();
   }
 
-  void _declineRequest(int index) {
-    final declinedUser = _pendingRequests[index];
-    setState(() {
-      _pendingRequests.removeAt(index);
-    });
+  Future<void> _fetchJoinRequests() async {
+    if (widget.tripData == null || widget.tripData!['id'] == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Declined request from ${declinedUser['name']}'),
-        backgroundColor: const Color(0xFFEF4444),
+    final response = await _tripService.getJoinRequests(widget.tripData!['id']);
+    if (response['success'] == true) {
+      setState(() {
+        _pendingRequests = List<Map<String, dynamic>>.from(response['data']);
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message'] ?? 'Failed to load requests')),
+        );
+      }
+    }
+  }
+
+
+  Future<void> _acceptRequest(int index) async {
+    if (widget.tripData == null) return;
+    
+    final acceptedUser = _pendingRequests[index];
+    final requestId = acceptedUser['id'];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => _buildConfirmationDialog(
+        title: 'Approve Request',
+        message: 'Are you sure you want to approve ${acceptedUser['name']}\'s request to join?',
+        confirmText: 'Approve',
+        confirmColor: const Color(0xFF20C060),
+        icon: Icons.check_circle_outline,
       ),
     );
+
+    if (confirmed != true) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final response = await _tripService.updateJoinRequest(widget.tripData!['id'], requestId, 'approved');
+    
+    // Hide loading
+    Navigator.pop(context);
+
+    if (response['success'] == true) {
+      setState(() {
+        _pendingRequests.removeAt(index);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${acceptedUser['name']} has been added to the trip!'),
+            backgroundColor: const Color(0xFF20C060),
+          ),
+        );
+        // We will return the accepted user back so the parent screen knows it was accepted
+        Navigator.pop(context, acceptedUser);
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message'] ?? 'Failed to approve request')),
+        );
+      }
+    }
+  }
+
+  Future<void> _declineRequest(int index) async {
+    if (widget.tripData == null) return;
+
+    final declinedUser = _pendingRequests[index];
+    final requestId = declinedUser['id'];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => _buildConfirmationDialog(
+        title: 'Reject Request',
+        message: 'Are you sure you want to reject ${declinedUser['name']}\'s request?',
+        confirmText: 'Reject',
+        confirmColor: const Color(0xFFEF4444),
+        icon: Icons.cancel_outlined,
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final response = await _tripService.updateJoinRequest(widget.tripData!['id'], requestId, 'rejected');
+    
+    // Hide loading
+    Navigator.pop(context);
+
+    if (response['success'] == true) {
+      setState(() {
+        _pendingRequests.removeAt(index);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Declined request from ${declinedUser['name']}'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response['message'] ?? 'Failed to decline request')),
+        );
+      }
+    }
   }
 
   void _showAddMemberDialog() {
@@ -175,6 +258,237 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
     );
   }
 
+  Widget _buildConfirmationDialog({
+    required String title,
+    required String message,
+    required String confirmText,
+    required Color confirmColor,
+    required IconData icon,
+  }) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Icon(icon, color: confirmColor, size: 28),
+          const SizedBox(width: 10),
+          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+        ],
+      ),
+      content: Text(
+        message,
+        style: const TextStyle(color: Color(0xFF64748B), fontSize: 15, height: 1.4),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          ),
+          child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: confirmColor,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          child: Text(
+            confirmText,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showUserInfoModal(Map<String, dynamic> user) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Avatar
+            Hero(
+              tag: 'avatar_${user['id']}',
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.grey[100],
+                  image: user['avatar'] != null
+                      ? DecorationImage(
+                          image: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(user['avatar'])),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: user['avatar'] == null
+                    ? const Center(child: Text('👤', style: TextStyle(fontSize: 40)))
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Name
+            Text(
+              user['name'] ?? 'Unknown User',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Role / Group badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                user['group'] ?? 'Member',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Contact info
+            _buildUserInfoRow(Icons.phone_outlined, 'Phone', user['phone'] ?? 'N/A'),
+            const SizedBox(height: 16),
+            _buildUserInfoRow(Icons.access_time_outlined, 'Requested', user['time'] != null ? _formatDate(user['time']) : 'Unknown'),
+            const SizedBox(height: 32),
+            // Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      int idx = _pendingRequests.indexWhere((r) => r['id'] == user['id']);
+                      if (idx != -1) _declineRequest(idx);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      side: const BorderSide(color: Color(0xFFEF4444)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: const Text('Reject', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      int idx = _pendingRequests.indexWhere((r) => r['id'] == user['id']);
+                      if (idx != -1) _acceptRequest(idx);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF20C060),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: const Text('Accept', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserInfoRow(IconData icon, String title, String value) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: const Color(0xFF64748B), size: 20),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDate(String isoString) {
+    try {
+      final date = DateTime.parse(isoString);
+      final now = DateTime.now();
+      final diff = now.difference(date);
+      if (diff.inDays == 0) {
+        if (diff.inHours == 0) {
+          return '${diff.inMinutes} minutes ago';
+        }
+        return '${diff.inHours} hours ago';
+      }
+      return '${diff.inDays} days ago';
+    } catch (e) {
+      return isoString;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -256,27 +570,31 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
               itemCount: _pendingRequests.length,
               itemBuilder: (context, index) {
                 final req = _pendingRequests[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.01),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
+                return GestureDetector(
+                  onTap: () => _showUserInfoModal(req),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.01),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
                   child: Row(
                     children: [
                       // Avatar
                       CircleAvatar(
                         radius: 24,
-                        backgroundImage: NetworkImage(req['avatar']),
+                        backgroundColor: Colors.grey[200],
+                        backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(req['avatar'], fallbackName: req['name'])),
+                        child: null,
                       ),
                       const SizedBox(width: 12),
                       // Details
@@ -311,11 +629,15 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 6),
-                                Text(
-                                  req['time'],
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Color(0xFF94A3B8),
+                                Expanded(
+                                  child: Text(
+                                    req['time'],
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Color(0xFF94A3B8),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
@@ -339,9 +661,10 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
                       ),
                     ],
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
+          ),
       floatingActionButton: Container(
         decoration: const BoxDecoration(
           shape: BoxShape.circle,

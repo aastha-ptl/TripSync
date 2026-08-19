@@ -11,7 +11,7 @@ const generateOTP = () => {
 
 export const register = async (req, res, next) => {
   try {
-    const { firstName, lastName, email, phone, password } = req.body;
+    const { firstName, lastName, email, phone, password, gender } = req.body;
     const profilePhoto = req.file ? req.file.path : null;
 
     if (!firstName || !lastName || !email || !phone || !password) {
@@ -37,6 +37,7 @@ export const register = async (req, res, next) => {
         phone,
         passwordHash,
         profilePhoto,
+        gender,
       }
     });
 
@@ -146,8 +147,7 @@ export const login = async (req, res, next) => {
       return res.status(403).json({ success: false, message: "Account is not active." });
     }
     
-    user.lastLoginAt = new Date();
-    await user.save();
+    await User.updateOne({ _id: user._id }, { lastLoginAt: new Date() });
 
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
@@ -210,3 +210,94 @@ export const resendOTP = async (req, res, next) => {
     next(error);
   }
 };
+
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Please provide your email." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found with this email." });
+    }
+
+    const otp = generateOTP();
+    await OTP.deleteMany({ email });
+    await OTP.create({ email, otp });
+
+    const html = generateOTPEmailTemplate(otp);
+    await sendEmail({
+      email,
+      subject: "TripSync - Password Reset OTP",
+      html,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "OTP sent to your email.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyForgotPasswordOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: "Please provide email and OTP." });
+    }
+
+    const otpRecord = await OTP.findOne({ email, otp });
+    if (!otpRecord) {
+      return res.status(400).json({ success: false, message: "Invalid or expired OTP." });
+    }
+
+    // Do NOT delete the OTP yet, we need it to reset the password, or we can just send a success 
+    // and they reset in the next step. Actually, we should ideally delete it and give a temporary reset token,
+    // but the simplest flow is to just verify it here and verify it AGAIN during resetPassword.
+    // Or just let them reset directly with email, otp, newPassword.
+
+    res.status(200).json({
+      success: true,
+      message: "OTP verified successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resetPassword = async (req, res, next) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: "Please provide email, OTP, and new password." });
+    }
+
+    const otpRecord = await OTP.findOne({ email, otp });
+    if (!otpRecord) {
+      return res.status(400).json({ success: false, message: "Invalid or expired OTP." });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+    
+    await User.updateOne({ _id: user._id }, { passwordHash });
+    await OTP.deleteMany({ email });
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset successful.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

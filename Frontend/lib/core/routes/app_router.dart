@@ -51,9 +51,11 @@ class AppRouter {
       case AppRoutes.chat:
         return _slideRoute(const ChatScreen());
       case AppRoutes.itinerary:
-        return _slideRoute(const ItineraryScreen());
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slideRoute(ItineraryScreen(tripData: args?['tripData']));
       case AppRoutes.addEvent:
-        return _slideRoute(const AddEventScreen());
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slideRoute(AddEventScreen(tripData: args?['tripData']));
       case AppRoutes.gallery:
         return _slideRoute(const GalleryScreen());
       case AppRoutes.allDocuments:

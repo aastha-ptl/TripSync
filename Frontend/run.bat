@@ -1,0 +1,3 @@
+@echo off
+echo Running flutter with build dependency validation bypassed...
+flutter run --android-skip-build-dependency-validation

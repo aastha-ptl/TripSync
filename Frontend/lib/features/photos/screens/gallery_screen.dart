@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class GalleryScreen extends StatefulWidget {
   const GalleryScreen({super.key});
@@ -180,8 +182,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           body: Center(
             child: Hero(
               tag: photo['url']!,
-              child: Image.network(
-                photo['url']!,
+              child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(photo['url']!),
                 fit: BoxFit.contain,
               ),
             ),
@@ -379,7 +380,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(16),
                               image: DecorationImage(
-                                image: NetworkImage(photo['url']!),
+                                image: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(photo['url']!)),
                                 fit: BoxFit.cover,
                               ),
                               boxShadow: [

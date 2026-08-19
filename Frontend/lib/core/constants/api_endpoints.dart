@@ -16,33 +16,10 @@ class ApiEndpoints {
       return '$_apiProtocol://$_localhostIp:$_port/api';
     }
 
-    final deviceInfo = DeviceInfoPlugin();
-
-    if (Platform.isAndroid) {
-      final androidInfo = await deviceInfo.androidInfo;
-
-      if (androidInfo.isPhysicalDevice) {
-        print('Physical device detected. Using PC IP: $_pcIp');
-        return '$_apiProtocol://$_pcIp:$_port/api';
-      }
-      print('Using emulator IP: $_emulatorIp');
-      return '$_apiProtocol://$_emulatorIp:$_port/api';
-    }
-
-    if (Platform.isIOS) {
-      final iosInfo = await deviceInfo.iosInfo;
-
-      if (iosInfo.isPhysicalDevice) {
-        print('Physical device detected. Using PC IP: $_pcIp');
-        return '$_apiProtocol://$_pcIp:$_port/api';
-      }
-
-      print('Using localhost IP: $_localhostIp');
-      return '$_apiProtocol://$_localhostIp:$_port/api';
-    }
-
-    print('Using localhost IP: $_localhostIp');
-    return '$_apiProtocol://$_localhostIp:$_port/api';
+    // Always use PC IP for both emulators and physical devices
+    // This ensures generated share links are always accessible on the local network
+    print('Using PC IP: $_pcIp');
+    return '$_apiProtocol://$_pcIp:$_port/api';
   }
 
   // Auth
@@ -50,9 +27,14 @@ class ApiEndpoints {
   static const String register = '/auth/register';
   static const String verifyOtp = '/auth/verify-otp';
   static const String resendOtp = '/auth/resend-otp';
-
+  static const String forgotPassword = '/auth/forgot-password';
+  static const String verifyForgotPasswordOtp = '/auth/verify-forgot-password-otp';
+  static const String resetPassword = '/auth/reset-password';
     // Trips
   static const String trips = '/trips';
   static const String joinTrip = '/trips/join';
   static String getInviteInfo(String token) => '/trips/invite/$token';
+
+  // Users
+  static const String profile = '/users/profile';
 }

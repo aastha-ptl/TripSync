@@ -3,8 +3,19 @@ import '../../../core/routes/app_routes.dart';
 import '../../documents/screens/documents_screen.dart';
 import '../../participants/screens/participants_screen.dart';
 
+import '../../profile/screens/profile_screen.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
+
 class TripDetailsScreen extends StatefulWidget {
-  const TripDetailsScreen({super.key});
+  final Map<String, dynamic>? tripData;
+  final String? profilePhotoUrl;
+
+  const TripDetailsScreen({
+    super.key,
+    this.tripData,
+    this.profilePhotoUrl,
+  });
 
   @override
   State<TripDetailsScreen> createState() => _TripDetailsScreenState();
@@ -18,6 +29,8 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     if (_selectedNavIndex == 2) {
       return Scaffold(
         body: DocumentsScreen(
+          tripData: widget.tripData,
+          profilePhotoUrl: widget.profilePhotoUrl,
           onBack: () {
             setState(() {
               _selectedNavIndex = 0;
@@ -35,6 +48,8 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     if (_selectedNavIndex == 3) {
       return Scaffold(
         body: ParticipantsScreen(
+          tripData: widget.tripData,
+          profilePhotoUrl: widget.profilePhotoUrl,
           onBack: () {
             setState(() {
               _selectedNavIndex = 0;
@@ -116,21 +131,25 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
             behavior: HitTestBehavior.opaque,
             child: Row(
               children: [
-                // Rounded Trip Image
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=150&auto=format&fit=crop&q=80',
-                    height: 48,
-                    width: 48,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      height: 48,
-                      width: 48,
-                      color: Colors.grey[200],
-                      child: const Icon(Icons.image, color: Colors.grey),
-                    ),
-                  ),
+                  child: widget.tripData != null && widget.tripData!['imageUrl'] != null
+                      ? CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(widget.tripData!['imageUrl']),
+                          height: 48,
+                          width: 48,
+                          fit: BoxFit.cover,
+                          errorWidget: (context, url, error) => Container(
+                            height: 48,
+                            width: 48,
+                            color: Colors.grey[200],
+                            child: const Icon(Icons.image, color: Colors.grey),
+                          ),
+                        )
+                      : CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl('https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=150&auto=format&fit=crop&q=80'),
+                          height: 48,
+                          width: 48,
+                          fit: BoxFit.cover,
+                        ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -142,9 +161,9 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                         runSpacing: 4,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          const Text(
-                            'Paris Getaway',
-                            style: TextStyle(
+                          Text(
+                            widget.tripData?['title'] ?? 'Paris Getaway',
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF0F172A),
@@ -240,14 +259,22 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           ),
         ),
         const SizedBox(width: 12),
-        // Right side profile picture (Tap to go back)
+        // Right side profile picture
         GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: const CircleAvatar(
-            radius: 20,
-            backgroundImage: NetworkImage(
-              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-            ),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const Scaffold(
+                  backgroundColor: Color(0xFFF8FAFC),
+                  body: ProfileScreen(),
+                ),
+              ),
+            );
+          },
+          child: CircleAvatar(
+            radius: 16,
+            backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.profilePhotoUrl, fallbackName: 'User')),
           ),
         ),
       ],
@@ -269,7 +296,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
             subtitle: 'View your trip plan',
             textColor: const Color(0xFF1E5AE6),
             onTap: () {
-              Navigator.pushNamed(context, AppRoutes.itinerary);
+              Navigator.pushNamed(context, AppRoutes.itinerary, arguments: {'tripData': widget.tripData});
             },
           ),
         ),
@@ -649,7 +676,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
             Expanded(
               child: GestureDetector(
                 onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.itinerary);
+                  Navigator.pushNamed(context, AppRoutes.itinerary, arguments: {'tripData': widget.tripData});
                 },
                 child: _buildOverviewCard(
                   icon: Icons.calendar_today_outlined,
@@ -884,7 +911,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           // Avatar
           CircleAvatar(
             radius: 18,
-            backgroundImage: NetworkImage(avatarUrl),
+            backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(avatarUrl)),
           ),
           const SizedBox(width: 12),
           // Text

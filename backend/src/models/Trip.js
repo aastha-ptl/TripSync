@@ -64,11 +64,6 @@ const tripSchema = new mongoose.Schema(
       trim: true,
     },
 
-    invitationLink: {
-      type: String,
-      default: null,
-    },
-
     status: {
       type: String,
       enum: ["planning", "ongoing", "completed", "cancelled"],

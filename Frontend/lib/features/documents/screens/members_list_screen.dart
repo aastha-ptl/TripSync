@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/routes/app_routes.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class MembersListScreen extends StatefulWidget {
   const MembersListScreen({super.key});
@@ -242,7 +244,7 @@ class _MembersListScreenState extends State<MembersListScreen> {
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           leading: CircleAvatar(
                             radius: 24,
-                            backgroundImage: NetworkImage(member['avatar']),
+                            backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(member['avatar'])),
                           ),
                           title: Text(
                             member['name'],

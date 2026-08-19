@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class AddDestinationScreen extends StatefulWidget {
   const AddDestinationScreen({super.key});
@@ -111,8 +113,7 @@ class _AddDestinationScreenState extends State<AddDestinationScreen> {
                     },
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        img,
+                      child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(img),
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -183,12 +184,11 @@ class _AddDestinationScreenState extends State<AddDestinationScreen> {
               // Large Cover Preview
               ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: Image.network(
-                  _selectedCoverUrl,
+                child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(_selectedCoverUrl),
                   height: 160,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
+                  errorWidget: (context, url, error) => Container(
                     height: 160,
                     width: double.infinity,
                     color: Colors.grey[200],
@@ -251,8 +251,7 @@ class _AddDestinationScreenState extends State<AddDestinationScreen> {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(10),
-                                child: Image.network(
-                                  imgUrl,
+                                child: CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(imgUrl),
                                   width: 80,
                                   height: 60,
                                   fit: BoxFit.cover,

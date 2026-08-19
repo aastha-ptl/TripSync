@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:tripsync/core/utils/image_utils.dart';
 
 class TripOverviewScreen extends StatelessWidget {
   const TripOverviewScreen({super.key});
@@ -112,8 +114,8 @@ class TripOverviewScreen extends StatelessWidget {
             width: 60,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              image: const DecorationImage(
-                image: NetworkImage('https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&auto=format&fit=crop&q=80'),
+              image: DecorationImage(
+                image: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl('https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&auto=format&fit=crop&q=80')),
                 fit: BoxFit.cover,
               ),
             ),

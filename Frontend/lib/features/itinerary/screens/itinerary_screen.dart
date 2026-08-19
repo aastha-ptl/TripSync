@@ -1,174 +1,150 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/routes/app_routes.dart';
+import '../services/itinerary_service.dart';
 
 class ItineraryScreen extends StatefulWidget {
-  const ItineraryScreen({super.key});
+  final Map<String, dynamic>? tripData;
+
+  const ItineraryScreen({super.key, this.tripData});
 
   @override
   State<ItineraryScreen> createState() => _ItineraryScreenState();
 }
 
 class _ItineraryScreenState extends State<ItineraryScreen> {
-  int _selectedDayIndex = 1; // Default to Day 2 (where we have active/upcoming items)
-
-  final List<Map<String, dynamic>> _days = [
-    {'day': 'Day 1', 'date': 'May 20', 'label': 'Arrival & Check-in'},
-    {'day': 'Day 2', 'date': 'May 21', 'label': 'Eiffel & Louvre'},
-    {'day': 'Day 3', 'date': 'May 22', 'label': 'Seine Cruise'},
-    {'day': 'Day 4', 'date': 'May 23', 'label': 'Versailles Palace'},
-    {'day': 'Day 5', 'date': 'May 24', 'label': 'Champs-Élysées'},
-    {'day': 'Day 6', 'date': 'May 25', 'label': 'Musée d\'Orsay'},
-    {'day': 'Day 7', 'date': 'May 26', 'label': 'Departure'},
-  ];
-
-  final Map<int, List<Map<String, dynamic>>> _activities = {
-    0: [
-      {
-        'time': '10:30 AM',
-        'title': 'Arrival CDG Airport',
-        'location': 'Charles de Gaulle Airport, Terminal 2E',
-        'type': 'transport',
-        'status': 'completed',
-        'cost': 'Included',
-        'notes': 'Group flight AF-023. Rahul to coordinate bags.',
-      },
-      {
-        'time': '02:00 PM',
-        'title': 'Check-in Le Bristol Hotel',
-        'location': '112 Rue du Faubourg Saint-Honoré',
-        'type': 'lodging',
-        'status': 'completed',
-        'cost': '€240/night',
-        'notes': 'Booking ref: #BRISTOL-PARIS-2025. Standard rooms.',
-      },
-      {
-        'time': '07:00 PM',
-        'title': 'Dinner at Le Meurice',
-        'location': '228 Rue de Rivoli, 75001 Paris',
-        'type': 'food',
-        'status': 'completed',
-        'cost': '₹4,850',
-        'notes': 'Michelin star fine dining. Dress code: Formal.',
-      },
-    ],
-    1: [
-      {
-        'time': '09:00 AM',
-        'title': 'Breakfast at Café de Flore',
-        'location': '172 Boulevard Saint-Germain',
-        'type': 'food',
-        'status': 'completed',
-        'cost': '€18',
-        'notes': 'Famous historical cafe. Try the hot chocolate!',
-      },
-      {
-        'time': '10:30 AM',
-        'title': 'Eiffel Tower Tour',
-        'location': 'Champ de Mars, Paris',
-        'type': 'sightseeing',
-        'status': 'active',
-        'cost': '€29',
-        'notes': 'Access to summit via elevator. Meet at North Pillar.',
-      },
-      {
-        'time': '03:00 PM',
-        'title': 'Louvre Museum Visit',
-        'location': 'Rue de Rivoli, 75001 Paris',
-        'type': 'sightseeing',
-        'status': 'upcoming',
-        'cost': '€22',
-        'notes': 'Pre-booked ticket time-slot. Guides provided.',
-      },
-    ],
-    2: [
-      {
-        'time': '11:00 AM',
-        'title': 'Arc de Triomphe Tour',
-        'location': 'Place Charles de Gaulle',
-        'type': 'sightseeing',
-        'status': 'upcoming',
-        'cost': '€13',
-        'notes': 'Climb up for top-down views of Champs-Élysées.',
-      },
-      {
-        'time': '06:30 PM',
-        'title': 'Seine River Evening Cruise',
-        'location': 'Bateaux-Mouches, Port de la Conférence',
-        'type': 'sightseeing',
-        'status': 'upcoming',
-        'cost': '€15',
-        'notes': '1-hour sightseeing boat cruise with glass dome.',
-      },
-    ],
-    3: [
-      {
-        'time': '10:00 AM',
-        'title': 'Day trip to Palace of Versailles',
-        'location': 'Place d\'Armes, 78000 Versailles',
-        'type': 'sightseeing',
-        'status': 'upcoming',
-        'cost': '€27',
-        'notes': 'Take RER C train from Paris city center.',
-      },
-    ],
-    4: [
-      {
-        'time': '11:30 AM',
-        'title': 'Shopping & Walk at Champs-Élysées',
-        'location': 'Avenue des Champs-Élysées',
-        'type': 'sightseeing',
-        'status': 'upcoming',
-        'cost': 'Free',
-        'notes': 'Leisure walk, cafes and luxury shop browsing.',
-      },
-      {
-        'time': '08:00 PM',
-        'title': 'French Cuisine Tasting Dinner',
-        'location': 'L\'Ambroisie, Place des Vosges',
-        'type': 'food',
-        'status': 'upcoming',
-        'cost': '€90',
-        'notes': 'Traditional French appetizers, wine, and dessert.',
-      },
-    ],
-    5: [
-      {
-        'time': '10:00 AM',
-        'title': 'Visit Musée d\'Orsay',
-        'location': '1 Rue de la Légion d\'Honneur',
-        'type': 'sightseeing',
-        'status': 'upcoming',
-        'cost': '€16',
-        'notes': 'Impressionist art galleries in old railway station.',
-      },
-    ],
-    6: [
-      {
-        'time': '12:00 PM',
-        'title': 'Departure CDG Airport',
-        'location': 'Charles de Gaulle Airport, Terminal 2E',
-        'type': 'transport',
-        'status': 'upcoming',
-        'cost': 'Included',
-        'notes': 'Flight AF-024 back home. Be at airport 3h early.',
-      },
-    ],
-  };
+  final ItineraryService _itineraryService = ItineraryService();
+  bool _isLoading = true;
+  int _selectedDayIndex = 0;
+  List<Map<String, dynamic>> _days = [];
+  Map<int, List<Map<String, dynamic>>> _activities = {};
 
   @override
+  void initState() {
+    super.initState();
+    _fetchItinerary();
+  }
+
+  Future<void> _fetchItinerary() async {
+    final tripId = widget.tripData?['_id'];
+    if (tripId == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    // Pre-calculate the days based on trip start and end date
+    List<Map<String, dynamic>> loadedDays = [];
+    Map<int, List<Map<String, dynamic>>> loadedActivities = {};
+    
+    if (widget.tripData?['startDate'] != null && widget.tripData?['endDate'] != null) {
+      final startDateStr = widget.tripData!['startDate'].toString();
+      final endDateStr = widget.tripData!['endDate'].toString();
+      
+      DateTime startDate = DateTime.parse(startDateStr).toLocal();
+      DateTime endDate = DateTime.parse(endDateStr).toLocal();
+      
+      startDate = DateTime(startDate.year, startDate.month, startDate.day);
+      endDate = DateTime(endDate.year, endDate.month, endDate.day);
+      
+      final durationInDays = endDate.difference(startDate).inDays + 1;
+      
+      for (int i = 0; i < durationInDays; i++) {
+        final currentDay = startDate.add(Duration(days: i));
+        loadedDays.add({
+          'day': 'Day ${i + 1}',
+          'date': DateFormat('MMM d').format(currentDay),
+          'rawDate': currentDay,
+          'label': '',
+        });
+        loadedActivities[i] = [];
+      }
+    }
+
+    final response = await _itineraryService.getItinerary(tripId);
+    if (response['success'] == true) {
+      final List<dynamic> daysData = response['data'] ?? [];
+      
+      for (var dayData in daysData) {
+        final DateTime date = DateTime.parse(dayData['date']).toLocal();
+        final normalizedDate = DateTime(date.year, date.month, date.day);
+        
+        int dayIndex = loadedDays.indexWhere((d) => 
+          (d['rawDate'] as DateTime).isAtSameMomentAs(normalizedDate)
+        );
+        
+        if (dayIndex != -1) {
+          if (dayData['title'] != null && dayData['title'].isNotEmpty && dayData['title'] != 'Day ${dayData['dayNumber']}') {
+            loadedDays[dayIndex]['label'] = dayData['title'];
+          }
+          
+          final List<dynamic> activitiesData = dayData['activities'] ?? [];
+          List<Map<String, dynamic>> dayActivities = [];
+          for (var act in activitiesData) {
+            String timeStr = '';
+            if (act['startTime'] != null) {
+              final startTime = DateTime.parse(act['startTime']).toLocal();
+              timeStr = DateFormat('hh:mm a').format(startTime);
+            }
+            
+            dayActivities.add({
+              'time': timeStr,
+              'title': act['title'] ?? '',
+              'location': act['location']?['name'] ?? '',
+              'type': act['type'] ?? 'other',
+              'status': act['status'] ?? 'planned',
+              'cost': (act['estimatedCost'] != null && act['estimatedCost'] > 0) ? '₹${act['estimatedCost']}' : 'Free',
+              'notes': act['description'] ?? '',
+            });
+          }
+          loadedActivities[dayIndex] = dayActivities;
+        }
+      }
+    }
+
+    int initialSelectedIndex = 0;
+    if (loadedDays.isNotEmpty) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      
+      final startDate = loadedDays.first['rawDate'] as DateTime;
+      final endDate = loadedDays.last['rawDate'] as DateTime;
+      
+      if (today.isAfter(endDate)) {
+        initialSelectedIndex = 0;
+      } else if (today.isBefore(startDate)) {
+        initialSelectedIndex = 0;
+      } else {
+        initialSelectedIndex = loadedDays.indexWhere((d) => 
+          (d['rawDate'] as DateTime).isAtSameMomentAs(today)
+        );
+        if (initialSelectedIndex == -1) initialSelectedIndex = 0;
+      }
+    }
+
+    setState(() {
+      _days = loadedDays;
+      _activities = loadedActivities;
+      _selectedDayIndex = initialSelectedIndex;
+      _isLoading = false;
+    });
+  }
+
+
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: _buildAppBar(),
-      body: Column(
-        children: [
-          _buildDaySelector(),
-          Expanded(
-            child: _buildActivityTimeline(),
-          ),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                if (_days.isNotEmpty) _buildDaySelector(),
+                Expanded(
+                  child: _buildActivityTimeline(),
+                ),
+              ],
+            ),
       floatingActionButton: _buildFAB(),
     );
   }
@@ -194,19 +170,19 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
+        children: [
           Text(
-            'Paris Getaway Itinerary',
-            style: TextStyle(
+            widget.tripData?['name'] ?? 'Trip Itinerary',
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 2),
+          const SizedBox(height: 2),
           Text(
-            'May 20 – May 27, 2025 • 7 Days',
-            style: TextStyle(
+            _days.isNotEmpty ? '${_days.first['date']} - ${_days.last['date']} • ${_days.length} Days' : 'Loading...',
+            style: const TextStyle(
               color: Colors.white70,
               fontSize: 11,
               fontWeight: FontWeight.w500,
@@ -568,7 +544,13 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   Widget _buildFAB() {
     return FloatingActionButton.extended(
       onPressed: () {
-        Navigator.pushNamed(context, AppRoutes.addEvent);
+        Navigator.pushNamed(context, AppRoutes.addEvent, arguments: {'tripData': widget.tripData}).then((_) {
+          // Refresh itinerary when returning from add event screen
+          setState(() {
+            _isLoading = true;
+          });
+          _fetchItinerary();
+        });
       },
       backgroundColor: AppColors.primary,
       icon: const Icon(Icons.add, color: Colors.white),
