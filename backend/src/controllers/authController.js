@@ -4,6 +4,10 @@ import OTP from "../models/OTP.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/generateToken.js";
 import { sendEmail } from "../services/emailService.js";
 import { generateOTPEmailTemplate } from "../utils/emailTemplates.js";
+import { OAuth2Client } from "google-auth-library";
+import env from "../config/env.js";
+
+const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -297,6 +301,150 @@ export const resetPassword = async (req, res, next) => {
       message: "Password reset successful.",
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+export const googleLogin = async (req, res, next) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Google ID token is required.",
+      });
+    }
+
+    // Verify Google ID token
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Google token.",
+      });
+    }
+
+    const {
+      sub: googleId,
+      email,
+      email_verified,
+      given_name,
+      family_name,
+      name,
+      picture,
+    } = payload;
+
+    if (!email || !email_verified) {
+      return res.status(401).json({
+        success: false,
+        message: "Google email is not verified.",
+      });
+    }
+
+    // Find user by Google ID OR email
+    let user = await User.findOne({
+      $or: [
+        { googleId },
+        { email },
+      ],
+    }).select("+googleId");
+
+    // =====================================
+    // EXISTING USER
+    // =====================================
+
+    if (user) {
+      // If account is suspended/deleted
+      if (
+        user.accountStatus === "suspended" ||
+        user.accountStatus === "deleted" ||
+        !user.isActive
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "Account is not active.",
+        });
+      }
+
+      // Link Google account if user previously used local login
+      if (!user.googleId) {
+        user.googleId = googleId;
+      }
+
+      user.isEmailVerified = true;
+      user.lastLoginAt = new Date();
+
+      // If this was a Google-only account, keep google provider.
+      // If it was an existing local account, don't overwrite
+      // the provider automatically.
+      await user.save();
+    }
+
+    // =====================================
+    // NEW USER
+    // =====================================
+
+    else {
+      const firstName =
+        given_name ||
+        (name ? name.split(" ")[0] : "Google");
+
+      const lastName =
+        family_name ||
+        (name
+          ? name.split(" ").slice(1).join(" ")
+          : "");
+
+      user = await User.create({
+        firstName,
+        lastName,
+        email,
+        phone: null,
+        profilePhoto: picture || null,
+
+        authProvider: "google",
+        googleId,
+
+        passwordHash: null,
+
+        isEmailVerified: true,
+        accountStatus: "active",
+        isActive: true,
+        lastLoginAt: new Date(),
+      });
+    }
+
+    // =====================================
+    // GENERATE YOUR NORMAL JWT TOKENS
+    // =====================================
+
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Google login successful.",
+      data: {
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          profilePhoto: user.profilePhoto,
+        },
+        accessToken,
+        refreshToken,
+      },
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
     next(error);
   }
 };

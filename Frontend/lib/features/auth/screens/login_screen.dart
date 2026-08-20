@@ -29,10 +29,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      systemNavigationBarColor: Colors.white,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
@@ -92,7 +94,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0,
+                    vertical: 32.0,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -152,7 +157,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           hintText: 'Enter your password',
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
                               size: 22,
                             ),
                             onPressed: () {
@@ -175,7 +182,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const ForgotPasswordScreen(),
+                                  builder: (context) =>
+                                      const ForgotPasswordScreen(),
                                 ),
                               );
                             },
@@ -193,63 +201,89 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 24),
 
                       // Login Button
-                      _isLoading 
-                        ? const Center(child: CircularProgressIndicator()) 
-                        : ElevatedButton(
-                        onPressed: () async {
-                          final email = _emailController.text.trim();
-                          final password = _passwordController.text.trim();
-                          
-                          if (email.isEmpty || password.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Please enter email and password')),
-                            );
-                            return;
-                          }
+                      _isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : ElevatedButton(
+                              onPressed: () async {
+                                final email = _emailController.text.trim();
+                                final password = _passwordController.text
+                                    .trim();
 
-                          setState(() {
-                            _isLoading = true;
-                          });
+                                if (email.isEmpty || password.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Please enter email and password',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
 
-                          final authService = AuthService();
-                          final result = await authService.login(email, password);
+                                setState(() {
+                                  _isLoading = true;
+                                });
 
-                          setState(() {
-                            _isLoading = false;
-                          });
+                                final authService = AuthService();
+                                final result = await authService.login(
+                                  email,
+                                  password,
+                                );
 
-                          if (result['success'] == true) {
-                             final pendingToken = await InviteService().getPendingInviteToken();
-                             if (pendingToken != null && pendingToken.isNotEmpty) {
-                               await InviteService().clearPendingInviteToken();
-                               if (context.mounted) {
-                                 Navigator.of(context).pushReplacementNamed(
-                                   AppRoutes.joinTrip,
-                                   arguments: {'inviteToken': pendingToken},
-                                 );
-                               }
-                             } else {
-                               if (context.mounted) {
-                                 Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
-                               }
-                             }
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(result['message'] ?? 'Login failed'),
-                                backgroundColor: Colors.redAccent,
-                              ),
-                            );
-                          }
-                        },
-                        child: const Text('Login'),
-                      ),
+                                setState(() {
+                                  _isLoading = false;
+                                });
+
+                                if (result['success'] == true) {
+                                  final pendingToken = await InviteService()
+                                      .getPendingInviteToken();
+                                  if (pendingToken != null &&
+                                      pendingToken.isNotEmpty) {
+                                    await InviteService()
+                                        .clearPendingInviteToken();
+                                    if (context.mounted) {
+                                      Navigator.of(
+                                        context,
+                                      ).pushReplacementNamed(
+                                        AppRoutes.joinTrip,
+                                        arguments: {
+                                          'inviteToken': pendingToken,
+                                        },
+                                      );
+                                    }
+                                  } else {
+                                    if (context.mounted) {
+                                      Navigator.of(
+                                        context,
+                                      ).pushReplacementNamed(
+                                        AppRoutes.dashboard,
+                                      );
+                                    }
+                                  }
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        result['message'] ?? 'Login failed',
+                                      ),
+                                      backgroundColor: Colors.redAccent,
+                                    ),
+                                  );
+                                }
+                              },
+                              child: const Text('Login'),
+                            ),
                       const SizedBox(height: 18),
 
                       // Or continue with Divider
                       Row(
                         children: [
-                          Expanded(child: Container(height: 1, color: AppColors.border)),
+                          Expanded(
+                            child: Container(
+                              height: 1,
+                              color: AppColors.border,
+                            ),
+                          ),
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 16.0),
                             child: Text(
@@ -261,14 +295,67 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                           ),
-                          Expanded(child: Container(height: 1, color: AppColors.border)),
+                          Expanded(
+                            child: Container(
+                              height: 1,
+                              color: AppColors.border,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 18),
 
                       // Social Buttons
                       OutlinedButton(
-                        onPressed: () {},
+                        onPressed: _isLoading
+                            ? null
+                            : () async {
+                                setState(() {
+                                  _isLoading = true;
+                                });
+
+                                final authService = AuthService();
+
+                                final result = await authService.googleLogin();
+
+                                if (!mounted) return;
+
+                                setState(() {
+                                  _isLoading = false;
+                                });
+
+                                if (result['success'] == true) {
+                                  final pendingToken = await InviteService()
+                                      .getPendingInviteToken();
+
+                                  if (pendingToken != null &&
+                                      pendingToken.isNotEmpty) {
+                                    await InviteService()
+                                        .clearPendingInviteToken();
+
+                                    if (!mounted) return;
+
+                                    Navigator.of(context).pushReplacementNamed(
+                                      AppRoutes.joinTrip,
+                                      arguments: {'inviteToken': pendingToken},
+                                    );
+                                  } else {
+                                    Navigator.of(
+                                      context,
+                                    ).pushReplacementNamed(AppRoutes.dashboard);
+                                  }
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        result['message'] ??
+                                            'Google login failed',
+                                      ),
+                                      backgroundColor: Colors.redAccent,
+                                    ),
+                                  );
+                                }
+                              },
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size(double.infinity, 54),
                           shape: RoundedRectangleBorder(
@@ -295,7 +382,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         ),
                       ),
-                      
+
                       const SizedBox(height: 22),
 
                       // Create Account Redirect
@@ -312,7 +399,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             GestureDetector(
                               onTap: () {
-                                Navigator.of(context).pushNamed(AppRoutes.registerStep1);
+                                Navigator.of(
+                                  context,
+                                ).pushNamed(AppRoutes.registerStep1);
                               },
                               child: const Text(
                                 'Create Account',

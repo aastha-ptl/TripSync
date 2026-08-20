@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/api_endpoints.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService {
   Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
@@ -9,20 +10,23 @@ class AuthService {
       final baseUrl = await ApiEndpoints.getBaseUrl();
       final url = Uri.parse('${baseUrl}${ApiEndpoints.register}');
 
-      if (userData.containsKey('profilePhoto') && userData['profilePhoto'] != null) {
+      if (userData.containsKey('profilePhoto') &&
+          userData['profilePhoto'] != null) {
         var request = http.MultipartRequest('POST', url);
-        
+
         userData.forEach((key, value) {
           if (key != 'profilePhoto') {
             request.fields[key] = value.toString();
           }
         });
-        
-        request.files.add(await http.MultipartFile.fromPath(
-          'profilePhoto',
-          userData['profilePhoto'],
-        ));
-        
+
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'profilePhoto',
+            userData['profilePhoto'],
+          ),
+        );
+
         var streamedResponse = await request.send();
         var response = await http.Response.fromStream(streamedResponse);
         return jsonDecode(response.body);
@@ -50,11 +54,14 @@ class AuthService {
       );
 
       final data = jsonDecode(response.body);
-      
+
       if (data['success'] == true && data['data'] != null) {
-        await _saveTokens(data['data']['accessToken'], data['data']['refreshToken']);
+        await _saveTokens(
+          data['data']['accessToken'],
+          data['data']['refreshToken'],
+        );
       }
-      
+
       return data;
     } catch (e) {
       return {'success': false, 'message': 'Connection error: ${e.toString()}'};
@@ -74,7 +81,10 @@ class AuthService {
       final data = jsonDecode(response.body);
 
       if (data['success'] == true && data['data'] != null) {
-        await _saveTokens(data['data']['accessToken'], data['data']['refreshToken']);
+        await _saveTokens(
+          data['data']['accessToken'],
+          data['data']['refreshToken'],
+        );
       }
 
       return data;
@@ -82,7 +92,7 @@ class AuthService {
       return {'success': false, 'message': 'Connection error: ${e.toString()}'};
     }
   }
-  
+
   Future<Map<String, dynamic>> resendOtp(String email) async {
     try {
       final baseUrl = await ApiEndpoints.getBaseUrl();
@@ -113,10 +123,15 @@ class AuthService {
     }
   }
 
-  Future<Map<String, dynamic>> verifyForgotPasswordOtp(String email, String otp) async {
+  Future<Map<String, dynamic>> verifyForgotPasswordOtp(
+    String email,
+    String otp,
+  ) async {
     try {
       final baseUrl = await ApiEndpoints.getBaseUrl();
-      final url = Uri.parse('${baseUrl}${ApiEndpoints.verifyForgotPasswordOtp}');
+      final url = Uri.parse(
+        '${baseUrl}${ApiEndpoints.verifyForgotPasswordOtp}',
+      );
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -128,14 +143,22 @@ class AuthService {
     }
   }
 
-  Future<Map<String, dynamic>> resetPassword(String email, String otp, String newPassword) async {
+  Future<Map<String, dynamic>> resetPassword(
+    String email,
+    String otp,
+    String newPassword,
+  ) async {
     try {
       final baseUrl = await ApiEndpoints.getBaseUrl();
       final url = Uri.parse('${baseUrl}${ApiEndpoints.resetPassword}');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'otp': otp, 'newPassword': newPassword}),
+        body: jsonEncode({
+          'email': email,
+          'otp': otp,
+          'newPassword': newPassword,
+        }),
       );
       return jsonDecode(response.body);
     } catch (e) {
@@ -143,18 +166,17 @@ class AuthService {
     }
   }
 
-
   Future<void> _saveTokens(String accessToken, String refreshToken) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access_token', accessToken);
     await prefs.setString('refresh_token', refreshToken);
   }
-  
+
   Future<String?> getAccessToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('access_token');
   }
-  
+
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
@@ -166,4 +188,55 @@ class AuthService {
     final token = await getAccessToken();
     return token != null && token.isNotEmpty;
   }
+
+ Future<Map<String, dynamic>> googleLogin() async {
+  try {
+    final GoogleSignInAccount googleUser =
+        await GoogleSignIn.instance.authenticate();
+
+    final GoogleSignInAuthentication googleAuth =
+        googleUser.authentication;
+
+    final String? idToken = googleAuth.idToken;
+
+    if (idToken == null) {
+      return {
+        'success': false,
+        'message': 'Unable to get Google ID token',
+      };
+    }
+
+    final baseUrl = await ApiEndpoints.getBaseUrl();
+
+    final url = Uri.parse(
+      '${baseUrl}${ApiEndpoints.googleLogin}',
+    );
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'idToken': idToken,
+      }),
+    );
+
+    final data = jsonDecode(response.body);
+
+    if (data['success'] == true && data['data'] != null) {
+      await _saveTokens(
+        data['data']['accessToken'],
+        data['data']['refreshToken'],
+      );
+    }
+
+    return data;
+  } catch (e) {
+    return {
+      'success': false,
+      'message': 'Google login failed: ${e.toString()}',
+    };
+  }
+}
 }

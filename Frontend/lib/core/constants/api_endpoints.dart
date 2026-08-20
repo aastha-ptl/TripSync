@@ -25,12 +25,14 @@ class ApiEndpoints {
   // Auth
   static const String login = '/auth/login';
   static const String register = '/auth/register';
+  static const String googleLogin = '/auth/google';
   static const String verifyOtp = '/auth/verify-otp';
   static const String resendOtp = '/auth/resend-otp';
   static const String forgotPassword = '/auth/forgot-password';
-  static const String verifyForgotPasswordOtp = '/auth/verify-forgot-password-otp';
+  static const String verifyForgotPasswordOtp =
+      '/auth/verify-forgot-password-otp';
   static const String resetPassword = '/auth/reset-password';
-    // Trips
+  // Trips
   static const String trips = '/trips';
   static const String joinTrip = '/trips/join';
   static String getInviteInfo(String token) => '/trips/invite/$token';
