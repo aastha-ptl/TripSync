@@ -22,6 +22,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
   // Form controllers and states
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _daysController = TextEditingController();
   
   DateTime? _startDate;
   DateTime? _endDate;
@@ -30,7 +31,9 @@ class _AddTripScreenState extends State<AddTripScreen> {
   String? _selectedImagePath; // Simulated uploaded image path/name
   bool _cancelPendingRequest = false;
 
-  final List<String> _tripTypes = ['Friends', 'Family', 'Solo', 'Business', 'Couple'];
+  final List<String> _tripTypes = ['Friends', 'Family', 'Business'];
+  final List<String> _businessTripTypes = ['Employees Only', 'Employees + Family'];
+  String? _selectedBusinessTripType;
   String? _existingImageUrl;
 
   @override
@@ -42,10 +45,36 @@ class _AddTripScreenState extends State<AddTripScreen> {
       _descriptionController.text = t['description'] ?? '';
       
       if (t['startDate'] != null) {
-        _startDate = DateTime.tryParse(t['startDate']);
+        final dateStr = t['startDate'].toString();
+        if (dateStr.length == 10 && dateStr.contains('-')) {
+          final parts = dateStr.split('-');
+          _startDate = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+        } else {
+          final parsed = DateTime.tryParse(dateStr);
+          if (parsed != null) {
+            _startDate = (parsed.isUtc && parsed.hour == 0 && parsed.minute == 0) 
+                ? DateTime(parsed.year, parsed.month, parsed.day) 
+                : parsed.toLocal();
+          }
+        }
       }
       if (t['endDate'] != null) {
-        _endDate = DateTime.tryParse(t['endDate']);
+        final dateStr = t['endDate'].toString();
+        if (dateStr.length == 10 && dateStr.contains('-')) {
+          final parts = dateStr.split('-');
+          _endDate = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+        } else {
+          final parsed = DateTime.tryParse(dateStr);
+          if (parsed != null) {
+            _endDate = (parsed.isUtc && parsed.hour == 0 && parsed.minute == 0) 
+                ? DateTime(parsed.year, parsed.month, parsed.day) 
+                : parsed.toLocal();
+          }
+        }
+      }
+      if (_startDate != null && _endDate != null) {
+        final days = _endDate!.difference(_startDate!).inDays + 1;
+        if (days > 0) _daysController.text = days.toString();
       }
       if (t['tripType'] != null && _tripTypes.contains(t['tripType'])) {
         _selectedTripType = t['tripType'];
@@ -60,6 +89,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
+    _daysController.dispose();
     super.dispose();
   }
 
@@ -70,6 +100,26 @@ class _AddTripScreenState extends State<AddTripScreen> {
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
     return '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} ${date.year}';
+  }
+
+  void _updateEndDateFromDays() {
+    if (_startDate != null && _daysController.text.isNotEmpty) {
+      final days = int.tryParse(_daysController.text.trim());
+      if (days != null && days > 0) {
+        setState(() {
+          _endDate = _startDate!.add(Duration(days: days - 1));
+        });
+      }
+    }
+  }
+
+  void _updateDaysFromEndDate() {
+    if (_startDate != null && _endDate != null) {
+      final days = _endDate!.difference(_startDate!).inDays + 1;
+      if (days > 0) {
+        _daysController.text = days.toString();
+      }
+    }
   }
 
   Future<void> _selectStartDate(BuildContext context) async {
@@ -97,6 +147,11 @@ class _AddTripScreenState extends State<AddTripScreen> {
         // If end date is before start date, reset end date
         if (_endDate != null && _endDate!.isBefore(_startDate!)) {
           _endDate = null;
+          _daysController.clear();
+        } else if (_daysController.text.isNotEmpty) {
+          _updateEndDateFromDays();
+        } else if (_endDate != null) {
+          _updateDaysFromEndDate();
         }
       });
     }
@@ -133,6 +188,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
     if (picked != null && picked != _endDate) {
       setState(() {
         _endDate = picked;
+        _updateDaysFromEndDate();
       });
     }
   }
@@ -166,6 +222,15 @@ class _AddTripScreenState extends State<AddTripScreen> {
         );
         return;
       }
+      if (_selectedTripType == 'Business' && _selectedBusinessTripType == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select a Business Trip Type'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
       
       setState(() {
         _isLoading = true;
@@ -175,9 +240,11 @@ class _AddTripScreenState extends State<AddTripScreen> {
       final tripData = {
         'name': _nameController.text.trim(),
         'description': _descriptionController.text.trim(),
-        'startDate': _startDate!.toIso8601String(),
-        'endDate': _endDate!.toIso8601String(),
+        'startDate': '${_startDate!.year}-${_startDate!.month.toString().padLeft(2, '0')}-${_startDate!.day.toString().padLeft(2, '0')}',
+        'endDate': '${_endDate!.year}-${_endDate!.month.toString().padLeft(2, '0')}-${_endDate!.day.toString().padLeft(2, '0')}',
         'tripType': _selectedTripType,
+        if (_selectedTripType == 'Business' && _selectedBusinessTripType != null)
+          'businessTripType': _selectedBusinessTripType,
         'cancelPendingRequest': _cancelPendingRequest,
         if (_selectedImagePath != null) 'coverImage': _selectedImagePath,
       };
@@ -764,6 +831,51 @@ class _AddTripScreenState extends State<AddTripScreen> {
                       ),
                       const SizedBox(height: 16),
 
+                      // Number of Days Card
+                      _buildFormCard(
+                        icon: Icons.tag,
+                        iconBgColor: const Color(0xFFE8F0FE),
+                        iconColor: AppColors.primary,
+                        label: 'Number of Days',
+                        isRequired: false,
+                        child: TextFormField(
+                          controller: _daysController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                          onChanged: (val) {
+                            if (_startDate != null) {
+                              _updateEndDateFromDays();
+                            }
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'e.g. 5',
+                            hintStyle: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textLight,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFEEF2F6), width: 1.5),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFEEF2F6), width: 1.5),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
                       // End Date Card
                       _buildFormCard(
                         icon: Icons.calendar_month,
@@ -935,7 +1047,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
                         iconBgColor: const Color(0xFFECFDF5),
                         iconColor: const Color(0xFF059669),
                         label: 'Trip Type',
-                        isRequired: false,
+                        isRequired: true,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           decoration: BoxDecoration(
@@ -955,6 +1067,9 @@ class _AddTripScreenState extends State<AddTripScreen> {
                               onChanged: (String? newValue) {
                                 setState(() {
                                   _selectedTripType = newValue;
+                                  if (newValue != 'Business') {
+                                    _selectedBusinessTripType = null;
+                                  }
                                 });
                               },
                               items: _tripTypes.map<DropdownMenuItem<String>>((String value) {
@@ -967,6 +1082,47 @@ class _AddTripScreenState extends State<AddTripScreen> {
                           ),
                         ),
                       ),
+                      if (_selectedTripType == 'Business') ...[
+                        const SizedBox(height: 16),
+                        _buildFormCard(
+                          icon: Icons.business,
+                          iconBgColor: const Color(0xFFE8F0FE),
+                          iconColor: AppColors.primary,
+                          label: 'Business Trip Type',
+                          isRequired: true,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFEEF2F6), width: 1.5),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _selectedBusinessTripType,
+                                hint: const Text('Select Business Trip Type'),
+                                isExpanded: true,
+                                icon: const Icon(Icons.keyboard_arrow_down, color: AppColors.textLight),
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                                onChanged: (String? newValue) {
+                                  setState(() {
+                                    _selectedBusinessTripType = newValue;
+                                  });
+                                },
+                                items: _businessTripTypes.map<DropdownMenuItem<String>>((String value) {
+                                  return DropdownMenuItem<String>(
+                                    value: value,
+                                    child: Text(value),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 32),
 
                       // Create Trip Button

@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
 import 'package:intl/intl.dart';
 import '../../itinerary/services/itinerary_service.dart';
+import '../../../core/utils/date_formatter.dart';
 
 class TripDetailsScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
@@ -367,8 +368,8 @@ String _getTripDateRange() {
   if (widget.tripData == null) return 'Unknown dates';
   
   try {
-    final start = DateTime.parse(widget.tripData!['startDate']);
-    final end = DateTime.parse(widget.tripData!['endDate']);
+    final start = TripInfoHelper.parseTripDate(widget.tripData!['startDate'].toString());
+    final end = TripInfoHelper.parseTripDate(widget.tripData!['endDate'].toString());
     final startStr = DateFormat('MMM d').format(start);
     final endStr = DateFormat('MMM d, yyyy').format(end);
     return '$startStr – $endStr';
@@ -381,8 +382,8 @@ String _getTripDuration() {
   if (widget.tripData == null) return '0 Days';
   
   try {
-    final start = DateTime.parse(widget.tripData!['startDate']);
-    final end = DateTime.parse(widget.tripData!['endDate']);
+    final start = TripInfoHelper.parseTripDate(widget.tripData!['startDate'].toString());
+    final end = TripInfoHelper.parseTripDate(widget.tripData!['endDate'].toString());
     final duration = end.difference(start).inDays + 1;
     return '$duration Days';
   } catch (e) {

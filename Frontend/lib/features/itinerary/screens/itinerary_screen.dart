@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/routes/app_routes.dart';
 import '../services/itinerary_service.dart';
+import '../../../core/utils/date_formatter.dart';
 
 class ItineraryScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
@@ -46,11 +47,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       final startDateStr = widget.tripData!['startDate'].toString();
       final endDateStr = widget.tripData!['endDate'].toString();
       
-      DateTime startDate = DateTime.parse(startDateStr).toLocal();
-      DateTime endDate = DateTime.parse(endDateStr).toLocal();
-      
-      startDate = DateTime(startDate.year, startDate.month, startDate.day);
-      endDate = DateTime(endDate.year, endDate.month, endDate.day);
+      DateTime startDate = TripInfoHelper.parseTripDate(startDateStr);
+      DateTime endDate = TripInfoHelper.parseTripDate(endDateStr);
       
       final durationInDays = endDate.difference(startDate).inDays + 1;
       

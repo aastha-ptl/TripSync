@@ -1,5 +1,7 @@
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
+import Family from "../models/Family.js";
+import TripParticipant from "../models/TripParticipant.js";
 import OTP from "../models/OTP.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/generateToken.js";
 import { sendEmail } from "../services/emailService.js";
@@ -11,6 +13,39 @@ const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+const linkUserToFamilies = async (user) => {
+  try {
+    const families = await Family.find({ "members.email": user.email, "members.userId": null });
+    for (const family of families) {
+      let updated = false;
+      family.members.forEach(m => {
+        if (m.email === user.email && !m.userId) {
+          m.userId = user._id;
+          updated = true;
+        }
+      });
+      if (updated) {
+        await family.save();
+        
+        // Ensure no duplicate participant exists
+        const existing = await TripParticipant.findOne({ tripId: family.tripId, userId: user._id });
+        if (!existing) {
+          await TripParticipant.create({
+            tripId: family.tripId,
+            userId: user._id,
+            role: "familyMember",
+            status: "approved",
+            joinedAt: new Date(),
+            familyId: family._id,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error linking user to families:", err);
+  }
 };
 
 export const register = async (req, res, next) => {
@@ -86,6 +121,7 @@ export const verifyOTP = async (req, res, next) => {
       user.isEmailVerified = true;
       user.isActive = true;
       await user.save();
+      await linkUserToFamilies(user);
     } else {
       user = await User.create({
         ...otpRecord.userData,
@@ -95,6 +131,8 @@ export const verifyOTP = async (req, res, next) => {
         isEmailVerified: true,
         isActive: true,
       });
+      
+      await linkUserToFamilies(user);
     }
 
     await OTP.deleteMany({ email }); // Delete OTP after successful verification

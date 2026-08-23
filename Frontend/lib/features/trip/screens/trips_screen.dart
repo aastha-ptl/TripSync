@@ -12,6 +12,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
 import 'add_trip_screen.dart';
 import '../../participants/screens/all_join_requests_screen.dart';
+import '../../../core/utils/date_formatter.dart';
 
 class TripsScreen extends StatefulWidget {
   final VoidCallback onProfileTap;
@@ -69,10 +70,8 @@ class _TripsScreenState extends State<TripsScreen> {
         
         setState(() {
           _allTrips = data.map((trip) {
-            final rawStartDate = DateTime.parse(trip['startDate']);
-            final rawEndDate = DateTime.parse(trip['endDate']);
-            final startDate = DateTime(rawStartDate.year, rawStartDate.month, rawStartDate.day);
-            final endDate = DateTime(rawEndDate.year, rawEndDate.month, rawEndDate.day);
+            final startDate = TripInfoHelper.parseTripDate(trip['startDate'].toString());
+            final endDate = TripInfoHelper.parseTripDate(trip['endDate'].toString());
             
             String status = 'Ongoing';
             Color statusColor = const Color(0xFFE8F0FE);

@@ -1,6 +1,7 @@
 import Trip from "../models/Trip.js";
 import TripParticipant from "../models/TripParticipant.js";
 import JoinRequest from "../models/JoinRequest.js";
+import User from "../models/User.js";
 import crypto from "crypto";
 import env from "../config/env.js";
 import { v2 as cloudinary } from "cloudinary";
@@ -17,14 +18,19 @@ const deleteUploadedFile = async (file) => {
 
 export const createTrip = async (req, res) => {
   try {
-    const { name, description, startDate, endDate, tripType, cancelPendingRequest } = req.body;
+    const { name, description, startDate, endDate, tripType, businessTripType, cancelPendingRequest } = req.body;
 
-    if (!name || !startDate || !endDate) {
+    if (!name || !startDate || !endDate || !tripType) {
       await deleteUploadedFile(req.file);
-      return res.status(400).json({ success: false, message: "Name, start date, and end date are required." });
+      return res.status(400).json({ success: false, message: "Name, start date, end date, and trip type are required." });
     }
 
-    if (new Date(endDate) < new Date(startDate)) {
+    if (tripType === "Business" && !businessTripType) {
+      await deleteUploadedFile(req.file);
+      return res.status(400).json({ success: false, message: "Business Trip Type is required." });
+    }
+
+    if (endDate < startDate) {
       await deleteUploadedFile(req.file);
       return res.status(400).json({ success: false, message: "End date cannot be before start date." });
     }
@@ -35,8 +41,8 @@ export const createTrip = async (req, res) => {
 
     const overlappingTrip = await Trip.findOne({
       _id: { $in: tripIds },
-      startDate: { $lte: new Date(endDate) },
-      endDate: { $gte: new Date(startDate) },
+      startDate: { $lte: endDate },
+      endDate: { $gte: startDate },
     });
 
     if (overlappingTrip) {
@@ -53,8 +59,8 @@ export const createTrip = async (req, res) => {
 
     const overlappingPendingTrip = await Trip.findOne({
       _id: { $in: pendingTripIds },
-      startDate: { $lte: new Date(endDate) },
-      endDate: { $gte: new Date(startDate) },
+      startDate: { $lte: endDate },
+      endDate: { $gte: startDate },
     });
 
     if (overlappingPendingTrip) {
@@ -83,6 +89,8 @@ export const createTrip = async (req, res) => {
       description: description || "",
       startDate,
       endDate,
+      tripType,
+      businessTripType: tripType === "Business" ? businessTripType : null,
       coverImage,
       createdBy: req.user._id,
       invitationCode,
@@ -144,7 +152,7 @@ export const getInviteInfo = async (req, res) => {
   try {
     const { inviteToken } = req.params;
     
-    const trip = await Trip.findOne({ invitationCode: inviteToken }).select("name description startDate endDate coverImage");
+    const trip = await Trip.findOne({ invitationCode: inviteToken }).select("name description startDate endDate coverImage tripType businessTripType");
     
     if (!trip) {
       return res.status(404).json({ success: false, message: "Trip invitation not found or invalid." });
@@ -162,7 +170,7 @@ export const getInviteInfo = async (req, res) => {
 
 export const joinTrip = async (req, res) => {
   try {
-    const { inviteToken } = req.body;
+    const { inviteToken, familyMembers } = req.body;
     if (!inviteToken) {
       return res.status(400).json({ success: false, message: "Invite token is required." });
     }
@@ -183,8 +191,8 @@ export const joinTrip = async (req, res) => {
 
     const overlappingTrip = await Trip.findOne({
       _id: { $in: tripIds },
-      startDate: { $lte: new Date(trip.endDate) },
-      endDate: { $gte: new Date(trip.startDate) },
+      startDate: { $lte: trip.endDate },
+      endDate: { $gte: trip.startDate },
     });
 
     if (overlappingTrip) {
@@ -199,13 +207,47 @@ export const joinTrip = async (req, res) => {
       return res.status(409).json({ success: false, message: "You already have a pending join request." });
     }
 
+    if (familyMembers && familyMembers.length > 0) {
+      for (const member of familyMembers) {
+        if (member.email && member.email.trim() !== "") {
+          const memberUser = await User.findOne({ email: member.email.trim() });
+          if (!memberUser) {
+            return res.status(400).json({ 
+              success: false, 
+              message: `Email ${member.email} is not registered in the system. Please remove the email or ask them to register.` 
+            });
+          }
+
+          // Check if this member has a clashing trip
+          const memberParticipants = await TripParticipant.find({ userId: memberUser._id, status: "approved" });
+          const memberTripIds = memberParticipants.map((p) => p.tripId);
+          
+          const memberClash = await Trip.findOne({
+            _id: { $in: memberTripIds },
+            startDate: { $lte: trip.endDate },
+            endDate: { $gte: trip.startDate },
+          });
+
+          if (memberClash) {
+            return res.status(400).json({
+              success: false,
+              message: `Family member ${member.name} (${member.email}) already has an approved trip clashing with these dates.`
+            });
+          }
+        }
+      }
+    }
+
+    const requestedRole = (familyMembers && familyMembers.length > 0) ? "familyLeader" : "soloTraveler";
+
     await JoinRequest.create({
       tripId: trip._id,
       userId: req.user._id,
-      requestedRole: "soloTraveler",
+      requestedRole: requestedRole,
       requestedBy: req.user._id,
       status: "pending",
       invitationCode: inviteToken,
+      familyMembers: familyMembers || [],
     });
 
     res.status(200).json({ success: true, message: "Join request sent successfully." });

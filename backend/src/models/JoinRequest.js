@@ -22,6 +22,16 @@ const joinRequestSchema = new mongoose.Schema(
       required: true,
     },
 
+    familyMembers: [
+      {
+        name: { type: String, trim: true, required: true },
+        age: { type: Number, required: true },
+        relationship: { type: String, trim: true, required: true },
+        email: { type: String, trim: true, default: null },
+        phone: { type: String, trim: true, default: null },
+      },
+    ],
+
     familyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Family",

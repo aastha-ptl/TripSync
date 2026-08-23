@@ -9,13 +9,6 @@ const familySchema = new mongoose.Schema(
       index: true,
     },
 
-    familyName: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 100,
-    },
-
     familyLeaderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -23,11 +16,16 @@ const familySchema = new mongoose.Schema(
       index: true,
     },
 
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    members: [
+      {
+        name: { type: String, trim: true, required: true },
+        age: { type: Number, required: true },
+        relationship: { type: String, trim: true, required: true },
+        email: { type: String, trim: true, default: null },
+        phone: { type: String, trim: true, default: null },
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      }
+    ]
   },
   {
     timestamps: true,

@@ -12,13 +12,13 @@ export const addActivity = async (req, res) => {
       return res.status(404).json({ success: false, message: "Trip not found" });
     }
 
-    // Parse the incoming date and ignore time portion for the ItineraryDay record
-    const targetDate = new Date(date);
-    targetDate.setHours(0, 0, 0, 0);
+    const targetDateStr = date.split('T')[0];
+    const targetDate = new Date(`${targetDateStr}T00:00:00Z`);
 
     // Calculate day number based on trip start date
-    const tripStart = new Date(trip.startDate);
-    tripStart.setHours(0, 0, 0, 0);
+    const tripStartStr = trip.startDate.split('T')[0];
+    const tripStart = new Date(`${tripStartStr}T00:00:00Z`);
+    
     const diffTime = targetDate.getTime() - tripStart.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     const dayNumber = diffDays > 0 ? diffDays : 1;
@@ -133,12 +133,13 @@ export const updateActivity = async (req, res) => {
     }
 
     // Handle date change
-    let targetDate = new Date(date);
-    targetDate.setHours(0, 0, 0, 0);
+    const targetDateStr = date.split('T')[0];
+    const targetDate = new Date(`${targetDateStr}T00:00:00Z`);
 
     const trip = await Trip.findById(tripId);
-    const tripStart = new Date(trip.startDate);
-    tripStart.setHours(0, 0, 0, 0);
+    const tripStartStr = trip.startDate.split('T')[0];
+    const tripStart = new Date(`${tripStartStr}T00:00:00Z`);
+    
     const diffTime = targetDate.getTime() - tripStart.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     const dayNumber = diffDays > 0 ? diffDays : 1;

@@ -3,6 +3,7 @@ import '../../../core/theme/app_colors.dart';
 import '../services/trip_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
+import '../../../core/utils/date_formatter.dart';
 
 class JoinTripScreen extends StatefulWidget {
   final String? inviteToken;
@@ -19,6 +20,35 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
   bool _isLoading = false;
   Map<String, dynamic>? _tripInfo;
   bool _showPreview = false;
+
+  bool _addingFamilyMembers = false;
+  final List<Map<String, TextEditingController>> _familyMemberControllers = [];
+
+  bool get _isFamilyTrip {
+    if (_tripInfo == null) return false;
+    final type = _tripInfo!['tripType'];
+    final bType = _tripInfo!['businessTripType'];
+    return type == 'Family' || (type == 'Business' && bType == 'Employees + Family');
+  }
+
+  void _addFamilyMember() {
+    setState(() {
+      _familyMemberControllers.add({
+        'name': TextEditingController(),
+        'age': TextEditingController(),
+        'relationship': TextEditingController(),
+        'email': TextEditingController(),
+        'phone': TextEditingController(),
+      });
+    });
+  }
+
+  void _removeFamilyMember(int index) {
+    setState(() {
+      final controllers = _familyMemberControllers.removeAt(index);
+      controllers.values.forEach((c) => c.dispose());
+    });
+  }
 
   @override
   void initState() {
@@ -60,6 +90,9 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
   @override
   void dispose() {
     _tokenController.dispose();
+    for (var controllers in _familyMemberControllers) {
+      controllers.values.forEach((c) => c.dispose());
+    }
     super.dispose();
   }
 
@@ -73,12 +106,27 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
     }
 
     // Actually join the trip
+    if (!_formKey.currentState!.validate()) return;
+    
     setState(() {
       _isLoading = true;
     });
 
+    List<Map<String, dynamic>> familyMembers = [];
+    if (_addingFamilyMembers) {
+      for (var controllers in _familyMemberControllers) {
+        familyMembers.add({
+          'name': controllers['name']!.text.trim(),
+          'age': int.tryParse(controllers['age']!.text.trim()) ?? 0,
+          'relationship': controllers['relationship']!.text.trim(),
+          'email': controllers['email']!.text.trim().isEmpty ? null : controllers['email']!.text.trim(),
+          'phone': controllers['phone']!.text.trim().isEmpty ? null : controllers['phone']!.text.trim(),
+        });
+      }
+    }
+
     final token = _tokenController.text.trim();
-    final response = await _tripService.joinTrip(token);
+    final response = await _tripService.joinTrip(token, familyMembers: familyMembers);
 
     setState(() {
       _isLoading = false;
@@ -152,14 +200,26 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
         ),
       );
     } else {
-      if (response['message'] == "You are already part of an approved trip during these dates.") {
+      final msg = response['message'] as String? ?? 'Failed to join trip';
+      if (msg == "You are already part of an approved trip during these dates.") {
         _showOverlapDialog(context);
+      } else if (msg.contains("is not registered in the system")) {
+        _showMemberErrorDialog(
+          context,
+          'Unregistered Member Email',
+          msg,
+        );
+      } else if (msg.contains("already has an approved trip clashing")) {
+        _showMemberErrorDialog(
+          context,
+          'Member Schedule Conflict',
+          msg,
+        );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(response['message'] ?? 'Failed to join trip'),
-            backgroundColor: AppColors.error,
-          ),
+        _showMemberErrorDialog(
+          context,
+          'Error Joining Trip',
+          msg,
         );
       }
     }
@@ -205,6 +265,69 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
                 height: 1.5,
               ),
             ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Understood'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMemberErrorDialog(BuildContext context, String title, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2), // light red
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.warning_amber_rounded,
+                color: AppColors.error,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textPrimary,
+                height: 1.5,
+              ),
+            ),
+
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: () {
@@ -341,7 +464,7 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
                               const Icon(Icons.wb_sunny_outlined, size: 14, color: Color(0xFF64748B)),
                               const SizedBox(width: 4),
                               Text(
-                                '${DateTime.parse(_tripInfo!['endDate']).difference(DateTime.parse(_tripInfo!['startDate'])).inDays + 1} Days',
+                                '${TripInfoHelper.parseTripDate(_tripInfo!['endDate']).difference(TripInfoHelper.parseTripDate(_tripInfo!['startDate'])).inDays + 1} Days',
                                 style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
@@ -425,6 +548,129 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
                             },
                           ),
                         ],
+                        if (_showPreview && _isFamilyTrip) ...[
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Who is joining?',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: RadioListTile<bool>(
+                                  title: const Text('Only Me', style: TextStyle(fontSize: 14)),
+                                  value: false,
+                                  groupValue: _addingFamilyMembers,
+                                  contentPadding: EdgeInsets.zero,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _addingFamilyMembers = val ?? false;
+                                    });
+                                  },
+                                ),
+                              ),
+                              Expanded(
+                                child: RadioListTile<bool>(
+                                  title: const Text('Me + Family', style: TextStyle(fontSize: 14)),
+                                  value: true,
+                                  groupValue: _addingFamilyMembers,
+                                  contentPadding: EdgeInsets.zero,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _addingFamilyMembers = val ?? true;
+                                      if (_addingFamilyMembers && _familyMemberControllers.isEmpty) {
+                                        _addFamilyMember();
+                                      }
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_addingFamilyMembers) ...[
+                            const SizedBox(height: 16),
+                            for (int i = 0; i < _familyMemberControllers.length; i++)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF9FAFB),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFEEF2F6)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Family Member ${i + 1}',
+                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                        if (_familyMemberControllers.length > 1)
+                                          IconButton(
+                                            icon: const Icon(Icons.remove_circle_outline, color: AppColors.error),
+                                            onPressed: () => _removeFamilyMember(i),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextFormField(
+                                      controller: _familyMemberControllers[i]['name'],
+                                      decoration: const InputDecoration(labelText: 'Name', isDense: true),
+                                      validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: _familyMemberControllers[i]['age'],
+                                            decoration: const InputDecoration(labelText: 'Age', isDense: true),
+                                            keyboardType: TextInputType.number,
+                                            validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: _familyMemberControllers[i]['relationship'],
+                                            decoration: const InputDecoration(labelText: 'Relation', isDense: true),
+                                            validator: (val) => val == null || val.trim().isEmpty ? 'Required' : null,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextFormField(
+                                      controller: _familyMemberControllers[i]['email'],
+                                      decoration: const InputDecoration(labelText: 'Email (Optional)', isDense: true),
+                                      keyboardType: TextInputType.emailAddress,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextFormField(
+                                      controller: _familyMemberControllers[i]['phone'],
+                                      decoration: const InputDecoration(labelText: 'Phone (Optional)', isDense: true),
+                                      keyboardType: TextInputType.phone,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            TextButton.icon(
+                              onPressed: _addFamilyMember,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Add Another Member'),
+                            ),
+                          ],
+                        ],
                         const SizedBox(height: 32),
                         SizedBox(
                           width: double.infinity,
@@ -495,8 +741,8 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
 
   String _formatDates(String startStr, String endStr) {
     try {
-      final start = DateTime.parse(startStr);
-      final end = DateTime.parse(endStr);
+      final start = TripInfoHelper.parseTripDate(startStr);
+      final end = TripInfoHelper.parseTripDate(endStr);
       final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       return '${months[start.month - 1]} ${start.day} – ${months[end.month - 1]} ${end.day}, ${end.year}';
     } catch (e) {

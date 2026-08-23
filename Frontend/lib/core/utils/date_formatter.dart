@@ -1,6 +1,20 @@
 import 'package:intl/intl.dart';
 
 class TripInfoHelper {
+  static DateTime parseTripDate(String dateStr) {
+    if (dateStr.length == 10 && dateStr.contains('-')) {
+      final parts = dateStr.split('-');
+      return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+    }
+    final parsed = DateTime.tryParse(dateStr);
+    if (parsed != null) {
+      return (parsed.isUtc && parsed.hour == 0 && parsed.minute == 0) 
+          ? DateTime(parsed.year, parsed.month, parsed.day) 
+          : parsed.toLocal();
+    }
+    return DateTime.now();
+  }
+
   static String formatTripHeader(
     Map<String, dynamic>? tripData, {
     String? defaultText,
@@ -13,8 +27,8 @@ class TripInfoHelper {
     }
     
     try {
-      final start = DateTime.parse(tripData['startDate']);
-      final end = DateTime.parse(tripData['endDate']);
+      final start = parseTripDate(tripData['startDate'].toString());
+      final end = parseTripDate(tripData['endDate'].toString());
       
       String dateStr = '';
       if (start.year == end.year && start.month == end.month) {

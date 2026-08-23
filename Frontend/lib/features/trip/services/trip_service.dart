@@ -144,7 +144,7 @@ class TripService {
     }
   }
 
-  Future<Map<String, dynamic>> joinTrip(String inviteToken) async {
+  Future<Map<String, dynamic>> joinTrip(String inviteToken, {List<Map<String, dynamic>>? familyMembers}) async {
     try {
       final token = await _authService.getAccessToken();
       if (token == null) {
@@ -159,7 +159,10 @@ class TripService {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'inviteToken': inviteToken}),
+        body: jsonEncode({
+          'inviteToken': inviteToken,
+          if (familyMembers != null && familyMembers.isNotEmpty) 'familyMembers': familyMembers,
+        }),
       );
       return jsonDecode(response.body);
     } catch (e) {

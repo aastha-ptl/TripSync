@@ -14,6 +14,7 @@ import '../../profile/services/user_service.dart';
 import '../../../core/widgets/custom_app_bar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
+import '../../../core/utils/date_formatter.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -81,10 +82,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         int completedCount = 0;
 
         for (var trip in data) {
-          final rawStartDate = DateTime.parse(trip['startDate']);
-          final rawEndDate = DateTime.parse(trip['endDate']);
-          final startDate = DateTime(rawStartDate.year, rawStartDate.month, rawStartDate.day);
-          final endDate = DateTime(rawEndDate.year, rawEndDate.month, rawEndDate.day);
+          final startDate = TripInfoHelper.parseTripDate(trip['startDate'].toString());
+          final endDate = TripInfoHelper.parseTripDate(trip['endDate'].toString());
           
           String status = 'Ongoing';
           Color statusColor = const Color(0xFF1E5AE6); // Default for ongoing

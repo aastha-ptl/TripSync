@@ -476,7 +476,74 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                           )
                         : Column(
                             children: filtered.map((member) {
-                              final isLeader = member['role'] == 'Trip Leader';
+                              final isLeader = member['role'] == 'tripLeader' || member['role'] == 'Trip Leader';
+                              final isFamilyLeader = member['role'] == 'familyLeader';
+                              final familyMembers = member['familyMembers'] as List<dynamic>? ?? [];
+                              final hasFamilyMembers = isFamilyLeader && familyMembers.isNotEmpty;
+
+                              Widget titleWidget = Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '${member['name']}${hasFamilyMembers ? ' (+${familyMembers.length})' : ''}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (isLeader) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEFF6FF),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        'Leader',
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1E5AE6),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  if (isFamilyLeader && !isLeader) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF0FDF4),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        'Family Leader',
+                                        style: TextStyle(
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF16A34A),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              );
+
+                              Widget leadingWidget = CircleAvatar(
+                                radius: 22,
+                                backgroundImage: CachedNetworkImageProvider(
+                                  ImageUtils.getOptimizedImageUrl(member['avatar'] ?? 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(member['name'] ?? 'User')}')
+                                ),
+                              );
+                              
+                              Widget subtitleWidget = Text(
+                                '${member['group']} • ${member['phone'] ?? 'N/A'}',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              );
+
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 decoration: BoxDecoration(
@@ -484,47 +551,28 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(color: const Color(0xFFE2E8F0)),
                                 ),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                                  leading: CircleAvatar(
-                                    radius: 22,
-                                    backgroundImage: CachedNetworkImageProvider(
-                                      ImageUtils.getOptimizedImageUrl(member['avatar'] ?? 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(member['name'] ?? 'User')}')
-                                    ),
-                                  ),
-                                  title: Row(
+                                child: hasFamilyMembers ? Theme(
+                                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                                  child: ExpansionTile(
+                                    tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                                    leading: leadingWidget,
+                                    title: titleWidget,
+                                    subtitle: subtitleWidget,
                                     children: [
-                                      Text(
-                                        member['name'],
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.textPrimary,
-                                        ),
-                                      ),
-                                      if (isLeader) ...[
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFEFF6FF),
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: const Text(
-                                            'Leader',
-                                            style: TextStyle(
-                                              fontSize: 8,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF1E5AE6),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                      Divider(height: 1, color: Colors.grey[200]),
+                                      ...familyMembers.map((fm) => ListTile(
+                                        contentPadding: const EdgeInsets.only(left: 70, right: 16, top: 4, bottom: 4),
+                                        title: Text(fm['name'] ?? 'Family Member', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                        subtitle: Text('${fm['relationship'] ?? 'Relative'} • ${fm['age'] ?? '?'} yrs\n${fm['email'] ?? 'No email'}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                                      )).toList(),
+                                      const SizedBox(height: 8),
                                     ],
                                   ),
-                                  subtitle: Text(
-                                    '${member['group']} • ${member['phone']}',
-                                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                                  ),
+                                ) : ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                  leading: leadingWidget,
+                                  title: titleWidget,
+                                  subtitle: subtitleWidget,
                                   trailing: IconButton(
                                     icon: const Icon(Icons.call_outlined, color: AppColors.primary, size: 20),
                                     onPressed: () {
