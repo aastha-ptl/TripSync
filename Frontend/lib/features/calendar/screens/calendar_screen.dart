@@ -24,6 +24,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   final TripService _tripService = TripService();
   final UserService _userService = UserService();
   String? _profilePhotoUrl;
+  String? _profileName;
 
   @override
   void initState() {
@@ -37,6 +38,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (mounted && response['success'] == true) {
       setState(() {
         _profilePhotoUrl = response['data']['profilePhoto'];
+        if (response['data']['firstName'] != null) {
+          _profileName = '${response['data']['firstName']} ${response['data']['lastName'] ?? ''}'.trim();
+        } else {
+          _profileName = response['data']['name'];
+        }
       });
     }
   }
@@ -186,6 +192,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           CustomAppBar(
             title: 'Calendar',
             profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
             onProfileTap: widget.onProfileTap,
           ),
           Expanded(

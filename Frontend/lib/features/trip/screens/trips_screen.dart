@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/widgets/custom_app_bar.dart';
 import '../services/trip_service.dart';
 import '../../profile/services/user_service.dart';
@@ -8,6 +10,8 @@ import 'solo_traveler_dashboard_screen.dart';
 import 'member_dashboard_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
+import 'add_trip_screen.dart';
+import '../../participants/screens/all_join_requests_screen.dart';
 
 class TripsScreen extends StatefulWidget {
   final VoidCallback onProfileTap;
@@ -28,6 +32,7 @@ class _TripsScreenState extends State<TripsScreen> {
   final TripService _tripService = TripService();
   final UserService _userService = UserService();
   String? _profilePhotoUrl;
+  String? _profileName;
 
   @override
   void initState() {
@@ -41,6 +46,11 @@ class _TripsScreenState extends State<TripsScreen> {
     if (mounted && response['success'] == true) {
       setState(() {
         _profilePhotoUrl = response['data']['profilePhoto'];
+        if (response['data']['firstName'] != null) {
+          _profileName = '${response['data']['firstName']} ${response['data']['lastName'] ?? ''}'.trim();
+        } else {
+          _profileName = response['data']['name'];
+        }
       });
     }
   }
@@ -95,6 +105,7 @@ class _TripsScreenState extends State<TripsScreen> {
               'endDate': trip['endDate'],
               'title': trip['name'] ?? 'Untitled Trip',
               'name': trip['name'] ?? 'Untitled Trip',
+              'description': trip['description'] ?? '',
               'location': 'Trip Location', // Not in schema, placeholder
               'dates': dateStr,
               'status': status,
@@ -103,6 +114,8 @@ class _TripsScreenState extends State<TripsScreen> {
               'imageUrl': imageUrl,
               'role': roleStr,
               'originalRole': trip['participantRole'] ?? 'Member',
+              'membersCount': trip['membersCount'] ?? 1,
+              'inviteToken': trip['invitationCode']?.toString() ?? trip['inviteToken']?.toString() ?? 'No Code Available',
             };
           }).toList();
           _isLoading = false;
@@ -141,7 +154,17 @@ class _TripsScreenState extends State<TripsScreen> {
           CustomAppBar(
             title: 'My Trips',
             profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
             onProfileTap: widget.onProfileTap,
+            notificationIcon: Icons.group_add_outlined,
+            onNotificationTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AllJoinRequestsScreen(),
+                ),
+              );
+            },
           ),
           Expanded(
             child: _isLoading
@@ -373,19 +396,21 @@ class _TripsScreenState extends State<TripsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                Text(
+                                  trip['title'],
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 6),
                                 Wrap(
                                   spacing: 6,
                                   runSpacing: 4,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    Text(
-                                      trip['title'],
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF0F172A),
-                                      ),
-                                    ),
                                     if (trip['role'] != null)
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -402,9 +427,24 @@ class _TripsScreenState extends State<TripsScreen> {
                                           ),
                                         ),
                                       ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: trip['statusColor'],
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        trip['status'],
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: trip['textColor'],
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 8),
                                 Row(
                                   children: [
                                     const Icon(
@@ -454,26 +494,194 @@ class _TripsScreenState extends State<TripsScreen> {
                           const SizedBox(width: 8),
                           Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: trip['statusColor'],
-                                  borderRadius: BorderRadius.circular(10),
+                              if (trip['role'] == 'Trip Leader') ...[
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined, size: 20, color: Color(0xFF64748B)),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () async {
+                                    final result = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => AddTripScreen(tripData: trip),
+                                      ),
+                                    );
+                                    if (result == true) {
+                                      _fetchTrips();
+                                    }
+                                  },
                                 ),
-                                child: Text(
-                                  trip['status'],
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: trip['textColor'],
-                                  ),
+                                const SizedBox(width: 8),
+                              ],
+                              PopupMenuButton<String>(
+                                icon: const Icon(
+                                  Icons.more_vert,
+                                  color: Color(0xFF94A3B8),
+                                  size: 20,
                                 ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Icon(
-                                Icons.chevron_right,
-                                color: Color(0xFF94A3B8),
-                                size: 18,
+                                padding: EdgeInsets.zero,
+                                onSelected: (value) async {
+                                  if (value == 'share') {
+                                    final inviteToken = trip['inviteToken'] ?? '';
+                                    final pcIp = AppConstants.pcIp;
+                                    final inviteLink = 'http://$pcIp:5000/join/$inviteToken';
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                        content: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const SizedBox(height: 16),
+                                            const Text(
+                                              'Share Trip',
+                                              style: TextStyle(
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppColors.textPrimary,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 16),
+                                            Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey[100],
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(color: Colors.grey[300]!),
+                                              ),
+                                              child: Column(
+                                                children: [
+                                                  const Text(
+                                                    'Invite Token',
+                                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: SelectableText(
+                                                          inviteToken,
+                                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                                          textAlign: TextAlign.center,
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        icon: const Icon(Icons.copy, size: 18, color: AppColors.primary),
+                                                        onPressed: () {
+                                                          Clipboard.setData(ClipboardData(text: inviteToken));
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            const SnackBar(content: Text('Invite token copied!')),
+                                                          );
+                                                        },
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const Divider(height: 16),
+                                                  const Text(
+                                                    'Invite Link',
+                                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: SelectableText(
+                                                          inviteLink,
+                                                          style: const TextStyle(fontSize: 12, color: AppColors.primary),
+                                                          textAlign: TextAlign.center,
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        icon: const Icon(Icons.copy, size: 18, color: AppColors.primary),
+                                                        onPressed: () {
+                                                          Clipboard.setData(ClipboardData(text: inviteLink));
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            const SnackBar(content: Text('Invite link copied!')),
+                                                          );
+                                                        },
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(height: 16),
+                                            ElevatedButton(
+                                              onPressed: () => Navigator.pop(context),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppColors.primary,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                minimumSize: const Size(double.infinity, 45),
+                                              ),
+                                              child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  } else if (value == 'delete') {
+                                    showDialog(
+                                      context: context,
+                                      builder: (BuildContext dialogContext) {
+                                        return AlertDialog(
+                                          title: const Text('Delete Trip'),
+                                          content: const Text('Are you sure you want to delete this trip? This action cannot be undone.'),
+                                          actions: [
+                                            TextButton(
+                                              child: const Text('Cancel'),
+                                              onPressed: () => Navigator.pop(dialogContext),
+                                            ),
+                                            TextButton(
+                                              child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                              onPressed: () async {
+                                                Navigator.pop(dialogContext);
+                                                setState(() => _isLoading = true);
+                                                final res = await _tripService.deleteTrip(trip['id']);
+                                                if (res['success'] == true) {
+                                                  _fetchTrips();
+                                                } else {
+                                                  setState(() => _isLoading = false);
+                                                  if (mounted) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(content: Text(res['message'] ?? 'Failed to delete trip')),
+                                                    );
+                                                  }
+                                                }
+                                              },
+                                            ),
+                                          ],
+                                        );
+                                      }
+                                    );
+                                  }
+                                },
+                                itemBuilder: (BuildContext context) {
+                                  return [
+                                    const PopupMenuItem<String>(
+                                      value: 'share',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.share_outlined, size: 20, color: Color(0xFF64748B)),
+                                          SizedBox(width: 8),
+                                          Text('Share Trip'),
+                                        ],
+                                      ),
+                                    ),
+                                    if (trip['role'] == 'Trip Leader')
+                                      const PopupMenuItem<String>(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('Delete Trip', style: TextStyle(color: Colors.red)),
+                                          ],
+                                        ),
+                                      ),
+                                  ];
+                                },
                               ),
                             ],
                           ),
@@ -499,6 +707,7 @@ class _TripsScreenState extends State<TripsScreen> {
           builder: (context) => TripDetailsScreen(
             tripData: trip,
             profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
           ),
         ),
       );
@@ -509,6 +718,7 @@ class _TripsScreenState extends State<TripsScreen> {
           builder: (context) => SoloTravelerDashboardScreen(
             tripData: trip,
             profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
           ),
         ),
       );
@@ -519,6 +729,7 @@ class _TripsScreenState extends State<TripsScreen> {
           builder: (context) => MemberDashboardScreen(
             tripData: trip,
             profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
           ),
         ),
       );

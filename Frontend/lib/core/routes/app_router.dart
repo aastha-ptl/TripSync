@@ -52,10 +52,16 @@ class AppRouter {
         return _slideRoute(const ChatScreen());
       case AppRoutes.itinerary:
         final args = settings.arguments as Map<String, dynamic>?;
-        return _slideRoute(ItineraryScreen(tripData: args?['tripData']));
+        return _slideRoute(ItineraryScreen(
+          tripData: args?['tripData'],
+          isSoloTraveler: args?['isSoloTraveler'] ?? false,
+        ));
       case AppRoutes.addEvent:
         final args = settings.arguments as Map<String, dynamic>?;
-        return _slideRoute(AddEventScreen(tripData: args?['tripData']));
+        return _slideRoute(AddEventScreen(
+          tripData: args?['tripData'],
+          existingActivity: args?['existingActivity'],
+        ));
       case AppRoutes.gallery:
         return _slideRoute(const GalleryScreen());
       case AppRoutes.allDocuments:
@@ -67,7 +73,8 @@ class AppRouter {
       case AppRoutes.membersList:
         return _slideRoute(const MembersListScreen());
       case AppRoutes.destinations:
-        return _slideRoute(const DestinationsScreen());
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slideRoute(DestinationsScreen(tripData: args?['tripData']));
       case AppRoutes.addDestination:
         return _slideRoute(const AddDestinationScreen());
       case AppRoutes.joinRequests:
@@ -75,9 +82,11 @@ class AppRouter {
       case AppRoutes.map:
         return _slideRoute(const MapScreen());
       case AppRoutes.tripOverview:
-        return _slideRoute(const TripOverviewScreen());
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slideRoute(TripOverviewScreen(tripData: args?['tripData']));
       case AppRoutes.tasks:
-        return _slideRoute(const TasksScreen());
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slideRoute(TasksScreen(tripData: args?['tripData']));
       case AppRoutes.joinTrip:
         final args = settings.arguments as Map<String, dynamic>?;
         return _slideRoute(JoinTripScreen(inviteToken: args?['inviteToken']));

@@ -71,6 +71,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           CustomAppBar(
             title: 'Profile',
             profilePhotoUrl: _profileData?['profilePhoto'],
+            profileName: _profileData != null ? _profileName : null,
             extraActions: [
               IconButton(
                 icon: const Icon(
@@ -152,7 +153,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: CircleAvatar(
                       radius: 46,
                       backgroundColor: const Color(0xFFE2E8F0),
-                      backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(_profileData!['profilePhoto'], fallbackName: _profileData!['name'])),
+                      backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(_profileData!['profilePhoto'], fallbackName: _profileName)),
                       child: null,
                     ),
                   ),
@@ -227,11 +228,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         const Icon(Icons.mail_outline, size: 16, color: Color(0xFF64748B)),
                         const SizedBox(width: 8),
-                        Text(
-                          _profileEmail,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF64748B),
+                        Expanded(
+                          child: Text(
+                            _profileEmail,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -241,11 +245,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         const Icon(Icons.phone_outlined, size: 16, color: Color(0xFF64748B)),
                         const SizedBox(width: 8),
-                        Text(
-                          _profilePhone,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF64748B),
+                        Expanded(
+                          child: Text(
+                            _profilePhone,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -385,7 +392,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           _buildInfoRow(
             icon: Icons.mail_outline,
-            label: 'Email (Read Only)',
+            label: 'Email',
             value: _profileEmail,
             iconBgColor: const Color(0xFFEFF6FF),
             iconColor: const Color(0xFF1E5AE6),

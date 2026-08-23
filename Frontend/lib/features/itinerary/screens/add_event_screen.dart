@@ -5,8 +5,9 @@ import '../services/itinerary_service.dart';
 
 class AddEventScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
+  final Map<String, dynamic>? existingActivity;
 
-  const AddEventScreen({super.key, this.tripData});
+  const AddEventScreen({super.key, this.tripData, this.existingActivity});
 
   @override
   State<AddEventScreen> createState() => _AddEventScreenState();
@@ -32,6 +33,26 @@ class _AddEventScreenState extends State<AddEventScreen> {
     {'id': 'lodging', 'label': 'Lodging', 'icon': Icons.hotel_outlined, 'color': Color(0xFF9333EA)},
     {'id': 'transport', 'label': 'Transport', 'icon': Icons.flight_takeoff_outlined, 'color': Color(0xFFEA580C)},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.existingActivity != null) {
+      final activity = widget.existingActivity!;
+      _titleController.text = activity['title'] ?? '';
+      _locationController.text = activity['location'] ?? '';
+      _timeController.text = activity['time'] ?? '';
+      _costController.text = (activity['cost'] ?? '').toString().replaceAll('₹', '');
+      _notesController.text = activity['notes'] ?? '';
+      
+      if (activity['rawDate'] != null) {
+        _selectedDate = activity['rawDate'] as DateTime;
+        _dateController.text = "${_selectedDate!.month}/${_selectedDate!.day}/${_selectedDate!.year}";
+      }
+      
+      _selectedCategory = activity['type'] ?? 'sightseeing';
+    }
+  }
 
   @override
   void dispose() {
@@ -80,7 +101,14 @@ class _AddEventScreenState extends State<AddEventScreen> {
         'notes': _notesController.text.trim(),
       };
 
-      final response = await _itineraryService.addActivity(tripId, eventData);
+      final isEdit = widget.existingActivity != null;
+      Map<String, dynamic> response;
+      if (isEdit) {
+        final activityId = widget.existingActivity!['_id'];
+        response = await _itineraryService.updateActivity(tripId, activityId, eventData);
+      } else {
+        response = await _itineraryService.addActivity(tripId, eventData);
+      }
 
       setState(() {
         _isSaving = false;
@@ -91,10 +119,10 @@ class _AddEventScreenState extends State<AddEventScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
-              children: const [
-                Icon(Icons.check_circle_outline, color: Colors.white),
-                SizedBox(width: 10),
-                Text('Event successfully added to itinerary!'),
+              children: [
+                const Icon(Icons.check_circle_outline, color: Colors.white),
+                const SizedBox(width: 10),
+                Text(isEdit ? 'Event successfully updated!' : 'Event successfully added to itinerary!'),
               ],
             ),
             backgroundColor: AppColors.secondary,
@@ -109,7 +137,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(response['message'] ?? 'Failed to add event'),
+            content: Text(response['message'] ?? 'Failed to ${isEdit ? 'update' : 'add'} event'),
             backgroundColor: Colors.red,
           ),
         );
@@ -207,9 +235,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
         icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
-      title: const Text(
-        'Add Itinerary Event',
-        style: TextStyle(
+      title: Text(
+        widget.existingActivity != null ? 'Edit Itinerary Event' : 'Add Itinerary Event',
+        style: const TextStyle(
           color: Colors.white,
           fontSize: 16,
           fontWeight: FontWeight.bold,

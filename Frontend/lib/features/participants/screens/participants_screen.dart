@@ -7,17 +7,22 @@ import '../../trip/services/trip_service.dart';
 import '../screens/join_requests_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
+import '../../../core/utils/date_formatter.dart';
 
 class ParticipantsScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final Map<String, dynamic>? tripData;
   final String? profilePhotoUrl;
+  final String? profileName;
+  final bool isSoloTraveler;
 
   const ParticipantsScreen({
     super.key, 
     this.onBack,
     this.tripData,
     this.profilePhotoUrl,
+    this.profileName,
+    this.isSoloTraveler = false,
   });
 
   @override
@@ -72,7 +77,10 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
     }
   }
 
-
+  String _getInitials(String? name) {
+    if (name == null || name.isEmpty) return 'U';
+    return name.split(' ').take(2).map((e) => e[0].toUpperCase()).join();
+  }
 
   List<Map<String, dynamic>> get _filteredParticipants {
     if (_searchQuery.isEmpty) return _participants;
@@ -81,8 +89,6 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
           p['group'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -160,19 +166,26 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Row(
-                                  children: const [
-                                    Icon(
+                                  children: [
+                                    const Icon(
                                       Icons.calendar_today_outlined,
                                       size: 11,
                                       color: Color(0xFF64748B),
                                     ),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'May 20 – May 27, 2025 • 8 Members',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Color(0xFF64748B),
-                                        fontWeight: FontWeight.w500,
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        TripInfoHelper.formatTripHeader(
+                                          widget.tripData,
+                                          defaultText: 'May 20 – May 27, 2025 • 8 Members',
+                                          showMembers: true,
+                                        ),
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF64748B),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
@@ -185,54 +198,55 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.primary),
-                        onPressed: () async {
-                          final acceptedUser = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => JoinRequestsScreen(tripData: widget.tripData),
-                            ),
-                          );
-                          if (acceptedUser != null && acceptedUser is Map<String, dynamic>) {
-                            _fetchParticipants();
-                          } else {
-                            // Fetch again anyway in case they accepted/rejected but it didn't return the exact user object
-                            _fetchParticipants();
-                          }
-                        },
-                      ),
-                      if (_pendingRequestsCount > 0)
-                        Positioned(
-                          right: 4,
-                          top: 4,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFEF4444), // red
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 16,
-                              minHeight: 16,
-                            ),
-                            child: Center(
-                              child: Text(
-                                _pendingRequestsCount > 99 ? '99+' : _pendingRequestsCount.toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
+                  if (!widget.isSoloTraveler)
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.primary),
+                          onPressed: () async {
+                            final acceptedUser = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => JoinRequestsScreen(tripData: widget.tripData),
+                              ),
+                            );
+                            if (acceptedUser != null && acceptedUser is Map<String, dynamic>) {
+                              _fetchParticipants();
+                            } else {
+                              // Fetch again anyway in case they accepted/rejected but it didn't return the exact user object
+                              _fetchParticipants();
+                            }
+                          },
+                        ),
+                        if (_pendingRequestsCount > 0)
+                          Positioned(
+                            right: 4,
+                            top: 4,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFEF4444), // red
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 16,
+                                minHeight: 16,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  _pendingRequestsCount > 99 ? '99+' : _pendingRequestsCount.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
+                      ],
+                    ),
                   // Profile Picture
                   GestureDetector(
                     onTap: () {
@@ -247,10 +261,21 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                       );
                     },
                     child: CircleAvatar(
-                      radius: 20,
-                      backgroundColor: Colors.grey[200],
-                      backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.profilePhotoUrl, fallbackName: 'User')),
-                      child: null,
+                      radius: 16,
+                      backgroundColor: const Color(0xFFE2E8F0),
+                      backgroundImage: widget.profilePhotoUrl != null && widget.profilePhotoUrl!.isNotEmpty
+                          ? CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.profilePhotoUrl))
+                          : null,
+                      child: widget.profilePhotoUrl == null || widget.profilePhotoUrl!.isEmpty
+                          ? Text(
+                              _getInitials(widget.profileName),
+                              style: const TextStyle(
+                                color: Color(0xFF475569),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            )
+                          : null,
                     ),
                   ),
                 ],
@@ -521,4 +546,13 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       ),
     );
   }
+}
+
+String _getInitials(String? name) {
+  if (name == null || name.trim().isEmpty) return '';
+  final parts = name.trim().split(RegExp(r'\s+'));
+  if (parts.length > 1) {
+    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+  }
+  return parts[0][0].toUpperCase();
 }

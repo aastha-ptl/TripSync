@@ -6,8 +6,13 @@ import '../services/itinerary_service.dart';
 
 class ItineraryScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
+  final bool isSoloTraveler;
 
-  const ItineraryScreen({super.key, this.tripData});
+  const ItineraryScreen({
+    super.key, 
+    this.tripData,
+    this.isSoloTraveler = false,
+  });
 
   @override
   State<ItineraryScreen> createState() => _ItineraryScreenState();
@@ -88,6 +93,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             }
             
             dayActivities.add({
+              '_id': act['_id'],
+              'rawDate': normalizedDate,
               'time': timeStr,
               'title': act['title'] ?? '',
               'location': act['location']?['name'] ?? '',
@@ -130,7 +137,59 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     });
   }
 
+  void _editActivity(Map<String, dynamic> activity) {
+    Navigator.pushNamed(
+      context,
+      AppRoutes.addEvent,
+      arguments: {
+        'tripData': widget.tripData,
+        'existingActivity': activity,
+      },
+    ).then((_) {
+      setState(() => _isLoading = true);
+      _fetchItinerary();
+    });
+  }
 
+  void _deleteActivity(Map<String, dynamic> activity) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Activity'),
+        content: const Text('Are you sure you want to delete this activity?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              setState(() => _isLoading = true);
+              final tripId = widget.tripData?['_id'];
+              final activityId = activity['_id'];
+              if (tripId != null && activityId != null) {
+                final response = await _itineraryService.deleteActivity(tripId, activityId);
+                if (response['success'] == true) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Activity deleted successfully'), backgroundColor: Colors.green),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(response['message'] ?? 'Failed to delete activity'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+              _fetchItinerary();
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -145,7 +204,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 ),
               ],
             ),
-      floatingActionButton: _buildFAB(),
+      floatingActionButton: widget.isSoloTraveler ? null : _buildFAB(),
     );
   }
 
@@ -450,6 +509,42 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                                   : const Color(0xFF94A3B8),
                             ),
                           ),
+                          if (!widget.isSoloTraveler) ...[
+                            const SizedBox(width: 4),
+                            PopupMenuButton<String>(
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.more_vert, size: 18, color: AppColors.textSecondary),
+                              onSelected: (value) {
+                                if (value == 'edit') {
+                                  _editActivity(activity);
+                                } else if (value == 'delete') {
+                                  _deleteActivity(activity);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.edit_outlined, size: 18, color: AppColors.textPrimary),
+                                      SizedBox(width: 8),
+                                      Text('Edit', style: TextStyle(fontSize: 14)),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                                      SizedBox(width: 8),
+                                      Text('Delete', style: TextStyle(fontSize: 14, color: Colors.red)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ],

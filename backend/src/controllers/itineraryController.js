@@ -117,3 +117,97 @@ export const getItinerary = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to fetch itinerary" });
   }
 };
+
+export const updateActivity = async (req, res) => {
+  try {
+    const { tripId, activityId } = req.params;
+    const { title, description, date, time, location, type, cost, notes } = req.body;
+
+    const activity = await Activity.findById(activityId);
+    if (!activity) {
+      return res.status(404).json({ success: false, message: "Activity not found" });
+    }
+
+    if (activity.tripId.toString() !== tripId) {
+      return res.status(400).json({ success: false, message: "Activity does not belong to this trip" });
+    }
+
+    // Handle date change
+    let targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const trip = await Trip.findById(tripId);
+    const tripStart = new Date(trip.startDate);
+    tripStart.setHours(0, 0, 0, 0);
+    const diffTime = targetDate.getTime() - tripStart.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    const dayNumber = diffDays > 0 ? diffDays : 1;
+
+    let itineraryDay = await ItineraryDay.findOne({ tripId, date: targetDate });
+    if (!itineraryDay) {
+      itineraryDay = new ItineraryDay({
+        tripId,
+        dayNumber,
+        date: targetDate,
+        title: `Day ${dayNumber}`,
+        createdBy: req.user._id,
+      });
+      await itineraryDay.save();
+    }
+
+    let startTime = null;
+    if (time) {
+      const timeParts = time.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+      if (timeParts) {
+        let hours = parseInt(timeParts[1], 10);
+        const minutes = parseInt(timeParts[2], 10);
+        const ampm = timeParts[3];
+        if (ampm && ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+        if (ampm && ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+        
+        startTime = new Date(targetDate);
+        startTime.setHours(hours, minutes, 0, 0);
+      }
+    }
+
+    activity.title = title || activity.title;
+    activity.description = description || notes || activity.description;
+    activity.type = type || activity.type;
+    activity.startTime = startTime || activity.startTime;
+    if (location !== undefined) {
+      activity.location.name = location;
+    }
+    if (cost !== undefined) {
+      activity.estimatedCost = parseFloat(cost.toString().replace(/[^0-9.-]+/g,"")) || 0;
+    }
+    activity.itineraryDayId = itineraryDay._id;
+
+    await activity.save();
+
+    res.status(200).json({ success: true, data: activity, message: "Activity updated" });
+  } catch (error) {
+    console.error("Error updating activity:", error);
+    res.status(500).json({ success: false, message: "Failed to update activity" });
+  }
+};
+
+export const deleteActivity = async (req, res) => {
+  try {
+    const { tripId, activityId } = req.params;
+
+    const activity = await Activity.findById(activityId);
+    if (!activity) {
+      return res.status(404).json({ success: false, message: "Activity not found" });
+    }
+
+    if (activity.tripId.toString() !== tripId) {
+      return res.status(400).json({ success: false, message: "Activity does not belong to this trip" });
+    }
+
+    await activity.deleteOne();
+    res.status(200).json({ success: true, message: "Activity deleted" });
+  } catch (error) {
+    console.error("Error deleting activity:", error);
+    res.status(500).json({ success: false, message: "Failed to delete activity" });
+  }
+};

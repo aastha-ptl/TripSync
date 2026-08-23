@@ -6,11 +6,13 @@ import '../../profile/screens/profile_screen.dart';
 class MemberDashboardScreen extends StatelessWidget {
   final Map<String, dynamic> tripData;
   final String? profilePhotoUrl;
+  final String? profileName;
 
   const MemberDashboardScreen({
     super.key, 
     required this.tripData,
     this.profilePhotoUrl,
+    this.profileName,
   });
 
   @override
@@ -24,6 +26,7 @@ class MemberDashboardScreen extends StatelessWidget {
               title: tripData['title'] ?? 'Member Trip',
               tripImageUrl: tripData['imageUrl'],
               profilePhotoUrl: profilePhotoUrl,
+              profileName: profileName,
               showBackButton: true,
               onProfileTap: () {
                 Navigator.push(

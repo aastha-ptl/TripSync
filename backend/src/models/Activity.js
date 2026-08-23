@@ -31,7 +31,7 @@ const activitySchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ["sightseeing", "food", "travel", "hotel", "shopping", "meeting", "other"],
+      enum: ["sightseeing", "food", "travel", "transport", "hotel", "lodging", "shopping", "meeting", "other"],
       default: "other",
     },
 

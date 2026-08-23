@@ -4,8 +4,11 @@ import '../../../core/routes/app_routes.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
 
+import '../../../core/utils/date_formatter.dart';
+
 class DestinationsScreen extends StatefulWidget {
-  const DestinationsScreen({super.key});
+  final Map<String, dynamic>? tripData;
+  const DestinationsScreen({super.key, this.tripData});
 
   @override
   State<DestinationsScreen> createState() => _DestinationsScreenState();
@@ -117,16 +120,20 @@ class _DestinationsScreenState extends State<DestinationsScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Row(
-                                  children: const [
-                                    Icon(
+                                  children: [
+                                    const Icon(
                                       Icons.calendar_today_outlined,
                                       size: 11,
                                       color: Color(0xFF64748B),
                                     ),
-                                    SizedBox(width: 4),
+                                    const SizedBox(width: 4),
                                     Text(
-                                      'May 20 – May 27, 2025 • 3 Cities',
-                                      style: TextStyle(
+                                      TripInfoHelper.formatTripHeader(
+                                        widget.tripData,
+                                        defaultText: 'May 20 – May 27, 2025 • 3 Cities',
+                                        showCities: true,
+                                      ),
+                                      style: const TextStyle(
                                         fontSize: 11,
                                         color: Color(0xFF64748B),
                                         fontWeight: FontWeight.w500,

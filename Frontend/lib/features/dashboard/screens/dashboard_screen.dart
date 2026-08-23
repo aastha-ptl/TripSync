@@ -24,6 +24,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
+  Key _tripsScreenKey = UniqueKey();
   int _carouselIndex = 0;
   final PageController _pageController = PageController();
 
@@ -36,6 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TripService _tripService = TripService();
   final UserService _userService = UserService();
   String? _profilePhotoUrl;
+  String? _profileName;
 
   @override
   void initState() {
@@ -49,6 +51,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted && response['success'] == true) {
       setState(() {
         _profilePhotoUrl = response['data']['profilePhoto'];
+        if (response['data']['firstName'] != null) {
+          _profileName = '${response['data']['firstName']} ${response['data']['lastName']}';
+        } else {
+          _profileName = response['data']['name'];
+        }
       });
     }
   }
@@ -103,8 +110,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             '_id': trip['_id'],
             'startDate': trip['startDate'],
             'endDate': trip['endDate'],
-            'title': trip['name'] ?? 'Untitled',
-            'name': trip['name'] ?? 'Untitled',
+            'title': trip['name'] ?? 'Untitled Trip',
+            'name': trip['name'] ?? 'Untitled Trip',
+            'description': trip['description'] ?? '',
             'location': location,
             'dates': '${fullMonths[startDate.month - 1]} ${startDate.day} - ${fullMonths[endDate.month - 1]} ${endDate.day}, ${endDate.year}',
             'status': status,
@@ -112,6 +120,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'textColor': statusColor,
             'imageUrl': imageUrl,
             'role': trip['participantRole'] ?? 'Member',
+            'originalRole': trip['participantRole'] ?? 'Member',
+            'membersCount': trip['membersCount'] ?? 1,
           });
 
           if (status == 'Upcoming' || status == 'Ongoing') {
@@ -122,6 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'endDate': trip['endDate'],
               'title': trip['name'] ?? 'Untitled',
               'name': trip['name'] ?? 'Untitled',
+              'description': trip['description'] ?? '',
               'location': location,
               'month': months[startDate.month - 1],
               'day': startDate.day.toString().padLeft(2, '0'),
@@ -130,8 +141,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'imageUrl': imageUrl,
               'daysLeft': '',
               'role': trip['participantRole'] ?? 'Member',
+              'originalRole': trip['participantRole'] ?? 'Member',
               'members': const [],
               'extraMembers': '',
+              'membersCount': trip['membersCount'] ?? 1,
             });
           }
         }
@@ -164,6 +177,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       case 1:
         body = TripsScreen(
+          key: _tripsScreenKey,
           onProfileTap: () {
             setState(() {
               _currentIndex = 4;
@@ -203,6 +217,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           CustomAppBar(
             profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
             onProfileTap: () {
               setState(() {
                 _currentIndex = 4;
@@ -287,8 +302,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildJoinTripBanner() {
     return GestureDetector(
-      onTap: () {
-        Navigator.pushNamed(context, AppRoutes.joinTrip);
+      onTap: () async {
+        await Navigator.pushNamed(context, AppRoutes.joinTrip);
+        _fetchTrips();
+        setState(() {
+          _tripsScreenKey = UniqueKey();
+        });
       },
       child: Container(
         width: double.infinity,
@@ -790,6 +809,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (context) => TripDetailsScreen(
             tripData: trip,
             profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
           ),
         ),
       );
@@ -800,6 +820,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (context) => SoloTravelerDashboardScreen(
             tripData: trip,
             profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
           ),
         ),
       );
@@ -810,6 +831,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (context) => MemberDashboardScreen(
             tripData: trip,
             profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
           ),
         ),
       );
@@ -886,8 +908,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildNavBarMiddleItem() {
     return GestureDetector(
-      onTap: () {
-        Navigator.pushNamed(context, AppRoutes.addTrip);
+      onTap: () async {
+        await Navigator.pushNamed(context, AppRoutes.addTrip);
+        _fetchTrips();
+        setState(() {
+          _tripsScreenKey = UniqueKey();
+        });
       },
       child: Container(
         width: 50,

@@ -315,7 +315,43 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
                             color: AppColors.textPrimary,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        if (_tripInfo?['startDate'] != null && _tripInfo?['endDate'] != null) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF64748B)),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatDates(_tripInfo!['startDate'], _tripInfo!['endDate']),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                '•',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.wb_sunny_outlined, size: 14, color: Color(0xFF64748B)),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${DateTime.parse(_tripInfo!['endDate']).difference(DateTime.parse(_tripInfo!['startDate'])).inDays + 1} Days',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 12),
                         Text(
                           _tripInfo?['description'] ?? 'No description provided.',
                           style: const TextStyle(
@@ -455,5 +491,16 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
         ),
       ),
     );
+  }
+
+  String _formatDates(String startStr, String endStr) {
+    try {
+      final start = DateTime.parse(startStr);
+      final end = DateTime.parse(endStr);
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return '${months[start.month - 1]} ${start.day} – ${months[end.month - 1]} ${end.day}, ${end.year}';
+    } catch (e) {
+      return '';
+    }
   }
 }

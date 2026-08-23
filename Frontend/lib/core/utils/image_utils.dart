@@ -6,7 +6,7 @@ class ImageUtils {
       if (fallbackName != null && fallbackName.isNotEmpty) {
         return 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(fallbackName)}&background=E2E8F0&color=475569';
       }
-      return 'https://ui-avatars.com/api/?name=User&background=E2E8F0&color=475569';
+      return 'https://ui-avatars.com/api/?name=%20&background=E2E8F0&color=475569';
     }
     
     // Check if it's a Cloudinary URL and doesn't already have transformations

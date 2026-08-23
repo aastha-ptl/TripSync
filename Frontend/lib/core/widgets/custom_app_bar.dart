@@ -10,6 +10,9 @@ class CustomAppBar extends StatelessWidget {
   final VoidCallback? onProfileTap;
   final List<Widget>? extraActions;
   final bool showBackButton;
+  final String? profileName;
+  final VoidCallback? onNotificationTap;
+  final IconData notificationIcon;
 
   const CustomAppBar({
     super.key,
@@ -19,6 +22,9 @@ class CustomAppBar extends StatelessWidget {
     this.onProfileTap,
     this.extraActions,
     this.showBackButton = false,
+    this.profileName,
+    this.onNotificationTap,
+    this.notificationIcon = Icons.notifications_outlined,
   });
 
   @override
@@ -121,12 +127,12 @@ class CustomAppBar extends StatelessWidget {
               Stack(
                 children: [
                   IconButton(
-                    icon: const Icon(
-                      Icons.notifications_outlined,
+                    icon: Icon(
+                      notificationIcon,
                       color: AppColors.textPrimary,
                       size: 28,
                     ),
-                    onPressed: () {},
+                    onPressed: onNotificationTap ?? () {},
                   ),
                   Positioned(
                     right: 12,
@@ -148,9 +154,20 @@ class CustomAppBar extends StatelessWidget {
                 onTap: onProfileTap,
                 child: CircleAvatar(
                   radius: 20,
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(profilePhotoUrl, fallbackName: 'User')),
-                  child: null,
+                  backgroundColor: const Color(0xFFE2E8F0),
+                  backgroundImage: profilePhotoUrl != null && profilePhotoUrl!.isNotEmpty
+                      ? CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(profilePhotoUrl))
+                      : null,
+                  child: profilePhotoUrl == null || profilePhotoUrl!.isEmpty
+                      ? Text(
+                          _getInitials(profileName),
+                          style: const TextStyle(
+                            color: Color(0xFF475569),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        )
+                      : null,
                 ),
               ),
             ],
@@ -158,5 +175,14 @@ class CustomAppBar extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _getInitials(String? name) {
+    if (name == null || name.trim().isEmpty) return '';
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length > 1) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
   }
 }

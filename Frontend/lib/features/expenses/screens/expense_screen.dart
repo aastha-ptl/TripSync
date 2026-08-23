@@ -108,6 +108,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
 
   final UserService _userService = UserService();
   String? _profilePhotoUrl;
+  String? _profileName;
 
   @override
   void initState() {
@@ -120,6 +121,11 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     if (mounted && response['success'] == true) {
       setState(() {
         _profilePhotoUrl = response['data']['profilePhoto'];
+        if (response['data']['firstName'] != null) {
+          _profileName = '${response['data']['firstName']} ${response['data']['lastName'] ?? ''}'.trim();
+        } else {
+          _profileName = response['data']['name'];
+        }
       });
     }
   }
@@ -134,6 +140,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             CustomAppBar(
               title: 'Expense',
               profilePhotoUrl: _profilePhotoUrl,
+              profileName: _profileName,
             ),
             Expanded(
               child: SingleChildScrollView(

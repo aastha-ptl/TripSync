@@ -190,10 +190,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         backgroundColor: const Color(0xFFF1F5F9),
                         backgroundImage: _selectedImage != null
                             ? FileImage(_selectedImage!) as ImageProvider
-                            : CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.initialData['profilePhoto'], fallbackName: widget.initialData['name'])),
-                        child: _selectedImage == null && widget.initialData['profilePhoto'] == null
-                            ? const Icon(Icons.person, size: 50, color: Color(0xFF94A3B8))
-                            : null,
+                            : CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.initialData['profilePhoto'], fallbackName: widget.initialData['firstName'] != null ? '${widget.initialData['firstName']} ${widget.initialData['lastName']}' : null)),
+                        child: null,
                       ),
                     ),
                     Positioned(

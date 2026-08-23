@@ -6,17 +6,22 @@ import '../../../core/routes/app_routes.dart';
 import '../../profile/screens/profile_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
+import '../../../core/utils/date_formatter.dart';
 
 class DocumentsScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final Map<String, dynamic>? tripData;
   final String? profilePhotoUrl;
+  final String? profileName;
+  final bool isSoloTraveler;
 
   const DocumentsScreen({
     super.key, 
     this.onBack,
     this.tripData,
     this.profilePhotoUrl,
+    this.profileName,
+    this.isSoloTraveler = false,
   });
 
   @override
@@ -52,8 +57,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     const SizedBox(height: 24),
                     _buildMyDocumentsSection(),
                     const SizedBox(height: 24),
-                    _buildMemberDocumentsSection(),
-                    const SizedBox(height: 24),
+                    if (!widget.isSoloTraveler) _buildMemberDocumentsSection(),
+                    if (!widget.isSoloTraveler) const SizedBox(height: 24),
                     _buildTripDocumentsSection(),
                     const SizedBox(height: 24),
                     _buildUploadDocumentBox(),
@@ -128,19 +133,26 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         ),
                         const SizedBox(height: 4),
                         Row(
-                          children: const [
-                            Icon(
+                          children: [
+                            const Icon(
                               Icons.calendar_today_outlined,
                               size: 11,
                               color: Color(0xFF64748B),
                             ),
-                            SizedBox(width: 4),
-                            Text(
-                              'May 20 – May 27, 2025 • 8 Members',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF64748B),
-                                fontWeight: FontWeight.w500,
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                TripInfoHelper.formatTripHeader(
+                                  widget.tripData,
+                                  defaultText: 'May 20 – May 27, 2025 • 8 Members',
+                                  showMembers: true,
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF64748B),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -166,15 +178,35 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               );
             },
             child: CircleAvatar(
-              radius: 20,
-              backgroundColor: Colors.grey[200],
-              backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.profilePhotoUrl, fallbackName: 'User')),
-              child: null,
+              radius: 16,
+              backgroundColor: const Color(0xFFE2E8F0),
+              backgroundImage: widget.profilePhotoUrl != null && widget.profilePhotoUrl!.isNotEmpty
+                  ? CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.profilePhotoUrl))
+                  : null,
+              child: widget.profilePhotoUrl == null || widget.profilePhotoUrl!.isEmpty
+                  ? Text(
+                      _getInitials(widget.profileName),
+                      style: const TextStyle(
+                        color: Color(0xFF475569),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    )
+                  : null,
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _getInitials(String? name) {
+    if (name == null || name.trim().isEmpty) return '';
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length > 1) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
   }
 
   Widget _buildSectionHeader({

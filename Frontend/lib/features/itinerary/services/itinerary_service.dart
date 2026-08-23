@@ -54,4 +54,51 @@ class ItineraryService {
       return {'success': false, 'message': 'Connection error: ${e.toString()}'};
     }
   }
+
+  Future<Map<String, dynamic>> updateActivity(String tripId, String activityId, Map<String, dynamic> eventData) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('$baseUrl/trips/$tripId/itinerary/events/$activityId');
+      
+      final response = await http.put(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(eventData),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteActivity(String tripId, String activityId) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('$baseUrl/trips/$tripId/itinerary/events/$activityId');
+      
+      final response = await http.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
 }

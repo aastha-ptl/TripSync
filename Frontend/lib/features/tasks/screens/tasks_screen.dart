@@ -4,7 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
 
 class TasksScreen extends StatefulWidget {
-  const TasksScreen({super.key});
+  final Map<String, dynamic>? tripData;
+  const TasksScreen({super.key, this.tripData});
 
   @override
   State<TasksScreen> createState() => _TasksScreenState();

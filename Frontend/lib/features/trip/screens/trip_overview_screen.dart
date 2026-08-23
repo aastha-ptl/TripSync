@@ -3,8 +3,11 @@ import '../../../core/theme/app_colors.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
 
+import '../../../core/utils/date_formatter.dart';
+
 class TripOverviewScreen extends StatelessWidget {
-  const TripOverviewScreen({super.key});
+  final Map<String, dynamic>? tripData;
+  const TripOverviewScreen({super.key, this.tripData});
 
   @override
   Widget build(BuildContext context) {
@@ -124,8 +127,8 @@ class TripOverviewScreen extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
+              children: [
+                const Text(
                   'Summer Europe Tour',
                   style: TextStyle(
                     fontSize: 18,
@@ -133,18 +136,22 @@ class TripOverviewScreen extends StatelessWidget {
                     color: Color(0xFF0F172A),
                   ),
                 ),
-                SizedBox(height: 4),
-                Text(
+                const SizedBox(height: 4),
+                const Text(
                   'Paris • Lyon • Nice',
                   style: TextStyle(
                     fontSize: 13,
                     color: Color(0xFF64748B),
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
-                  'May 20 - May 27, 2026 (7 Days)',
-                  style: TextStyle(
+                  TripInfoHelper.formatTripHeader(
+                    tripData,
+                    defaultText: 'May 20 - May 27, 2026 (7 Days)',
+                    showDuration: true,
+                  ),
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: AppColors.primary,

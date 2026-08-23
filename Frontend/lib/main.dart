@@ -16,6 +16,7 @@ void main() async {
     serverClientId:
         '177156263296-fef25kmg9hit3223trfr00goprmg5gbn.apps.googleusercontent.com',
   );
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,

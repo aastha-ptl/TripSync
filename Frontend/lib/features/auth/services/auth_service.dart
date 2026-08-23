@@ -189,22 +189,22 @@ class AuthService {
     return token != null && token.isNotEmpty;
   }
 
- Future<Map<String, dynamic>> googleLogin() async {
-  try {
-    final GoogleSignInAccount googleUser =
-        await GoogleSignIn.instance.authenticate();
+  Future<Map<String, dynamic>> googleLogin() async {
+    try {
+      final GoogleSignInAccount googleUser =
+          await GoogleSignIn.instance.authenticate();
 
-    final GoogleSignInAuthentication googleAuth =
-        googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
 
-    final String? idToken = googleAuth.idToken;
+      final String? idToken = googleAuth.idToken;
 
-    if (idToken == null) {
-      return {
-        'success': false,
-        'message': 'Unable to get Google ID token',
-      };
-    }
+      if (idToken == null) {
+        return {
+          'success': false,
+          'message': 'Unable to get Google ID token',
+        };
+      }
 
     final baseUrl = await ApiEndpoints.getBaseUrl();
 

@@ -6,15 +6,19 @@ import '../../participants/screens/participants_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
+import 'package:intl/intl.dart';
+import '../../itinerary/services/itinerary_service.dart';
 
 class TripDetailsScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
   final String? profilePhotoUrl;
+  final String? profileName;
 
   const TripDetailsScreen({
     super.key,
     this.tripData,
     this.profilePhotoUrl,
+    this.profileName,
   });
 
   @override
@@ -23,6 +27,61 @@ class TripDetailsScreen extends StatefulWidget {
 
 class _TripDetailsScreenState extends State<TripDetailsScreen> {
   int _selectedNavIndex = 0;
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _upcomingActivities = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUpcomingActivities();
+  }
+
+  Future<void> _fetchUpcomingActivities() async {
+    final tripId = widget.tripData?['_id'];
+    if (tripId == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      final itineraryService = ItineraryService();
+      final response = await itineraryService.getItinerary(tripId);
+      
+      if (response['success'] == true && mounted) {
+        final List<dynamic> daysData = response['data'] ?? [];
+        List<Map<String, dynamic>> allActivities = [];
+        
+        final now = DateTime.now();
+        
+        for (var dayData in daysData) {
+          final List<dynamic> activitiesData = dayData['activities'] ?? [];
+          for (var act in activitiesData) {
+            if (act['startTime'] != null) {
+               final startTime = DateTime.parse(act['startTime']).toLocal();
+               if (startTime.isAfter(now) || 
+                   (startTime.year == now.year && startTime.month == now.month && startTime.day == now.day)) {
+                  allActivities.add({
+                    ...act,
+                    'parsedStartTime': startTime,
+                  });
+               }
+            }
+          }
+        }
+        
+        allActivities.sort((a, b) => (a['parsedStartTime'] as DateTime).compareTo(b['parsedStartTime'] as DateTime));
+        
+        setState(() {
+          _upcomingActivities = allActivities.take(3).toList();
+          _isLoading = false;
+        });
+      } else {
+         if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +90,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         body: DocumentsScreen(
           tripData: widget.tripData,
           profilePhotoUrl: widget.profilePhotoUrl,
+          profileName: widget.profileName,
           onBack: () {
             setState(() {
               _selectedNavIndex = 0;
@@ -50,6 +110,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         body: ParticipantsScreen(
           tripData: widget.tripData,
           profilePhotoUrl: widget.profilePhotoUrl,
+          profileName: widget.profileName,
           onBack: () {
             setState(() {
               _selectedNavIndex = 0;
@@ -86,8 +147,6 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                           _buildUpcomingScheduleSection(),
                           const SizedBox(height: 24),
                           _buildTripOverviewSection(),
-                          const SizedBox(height: 24),
-                          _buildRecentActivitySection(),
                           const SizedBox(height: 100), // Extra space for FAB & bottom nav
                         ],
                       ),
@@ -206,16 +265,16 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                         children: [
                           Row(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(
+                            children: [
+                              const Icon(
                                 Icons.calendar_today_outlined,
                                 size: 12,
                                 color: Color(0xFF64748B),
                               ),
-                              SizedBox(width: 4),
+                              const SizedBox(width: 4),
                               Text(
-                                'May 20 – May 27, 2025',
-                                style: TextStyle(
+                                _getTripDateRange(),
+                                style: const TextStyle(
                                   fontSize: 11,
                                   color: Color(0xFF64748B),
                                   fontWeight: FontWeight.w500,
@@ -232,16 +291,16 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                           ),
                           Row(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(
+                            children: [
+                              const Icon(
                                 Icons.people_outline,
                                 size: 13,
                                 color: Color(0xFF64748B),
                               ),
-                              SizedBox(width: 4),
+                              const SizedBox(width: 4),
                               Text(
-                                '8 Members',
-                                style: TextStyle(
+                                '${widget.tripData?['membersCount'] ?? 1} Members',
+                                style: const TextStyle(
                                   fontSize: 11,
                                   color: Color(0xFF64748B),
                                   fontWeight: FontWeight.w500,
@@ -274,12 +333,61 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           },
           child: CircleAvatar(
             radius: 16,
-            backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.profilePhotoUrl, fallbackName: 'User')),
+            backgroundColor: const Color(0xFFE2E8F0),
+            backgroundImage: widget.profilePhotoUrl != null && widget.profilePhotoUrl!.isNotEmpty
+                ? CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(widget.profilePhotoUrl))
+                : null,
+            child: widget.profilePhotoUrl == null || widget.profilePhotoUrl!.isEmpty
+                ? Text(
+                    _getInitials(widget.profileName),
+                    style: const TextStyle(
+                      color: Color(0xFF475569),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  )
+                : null,
           ),
         ),
       ],
     ),
   );
+}
+
+String _getInitials(String? name) {
+  if (name == null || name.trim().isEmpty) return '';
+  final parts = name.trim().split(RegExp(r'\s+'));
+  if (parts.length > 1) {
+    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+  }
+  return parts[0][0].toUpperCase();
+}
+
+String _getTripDateRange() {
+  if (widget.tripData == null) return 'Unknown dates';
+  
+  try {
+    final start = DateTime.parse(widget.tripData!['startDate']);
+    final end = DateTime.parse(widget.tripData!['endDate']);
+    final startStr = DateFormat('MMM d').format(start);
+    final endStr = DateFormat('MMM d, yyyy').format(end);
+    return '$startStr – $endStr';
+  } catch (e) {
+    return 'Unknown dates';
+  }
+}
+
+String _getTripDuration() {
+  if (widget.tripData == null) return '0 Days';
+  
+  try {
+    final start = DateTime.parse(widget.tripData!['startDate']);
+    final end = DateTime.parse(widget.tripData!['endDate']);
+    final duration = end.difference(start).inDays + 1;
+    return '$duration Days';
+  } catch (e) {
+    return '0 Days';
+  }
 }
 
 
@@ -307,10 +415,10 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
             iconColor: const Color(0xFF9333EA),
             icon: Icons.chat_bubble_outline,
             title: 'Tasks',
-            subtitle: '3 pending tasks',
+            subtitle: 'Manage tasks',
             textColor: const Color(0xFF9333EA),
             onTap: () {
-              Navigator.pushNamed(context, AppRoutes.tasks);
+              Navigator.pushNamed(context, AppRoutes.tasks, arguments: {'tripData': widget.tripData});
             },
           ),
         ),
@@ -324,7 +432,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
             subtitle: 'Trip summary',
             textColor: const Color(0xFFEA580C),
             onTap: () {
-              Navigator.pushNamed(context, AppRoutes.tripOverview);
+              Navigator.pushNamed(context, AppRoutes.tripOverview, arguments: {'tripData': widget.tripData});
             },
           ),
         ),
@@ -470,37 +578,46 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        // Timeline Items
-        _buildTimelineItem(
-          dotColor: const Color(0xFF20C060),
-          month: 'MAY',
-          day: '20',
-          title: 'Arrival in Paris',
-          location: 'Charles de Gaulle Airport',
-          time: '10:30 AM',
-          timeColor: const Color(0xFF20C060),
-          isLast: false,
-        ),
-        _buildTimelineItem(
-          dotColor: const Color(0xFF1E5AE6),
-          month: 'MAY',
-          day: '21',
-          title: 'Eiffel Tower Visit',
-          location: 'Champ de Mars, Paris',
-          time: '2:00 PM',
-          timeColor: const Color(0xFF1E5AE6),
-          isLast: false,
-        ),
-        _buildTimelineItem(
-          dotColor: const Color(0xFF9333EA),
-          month: 'MAY',
-          day: '23',
-          title: 'Seine River Cruise',
-          location: 'Evening Cruise',
-          time: '6:30 PM',
-          timeColor: const Color(0xFF9333EA),
-          isLast: true,
-        ),
+        if (_isLoading)
+          const Center(child: CircularProgressIndicator())
+        else if (_upcomingActivities.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'No upcoming activities scheduled.',
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 14,
+              ),
+            ),
+          )
+        else
+          ..._upcomingActivities.asMap().entries.map((entry) {
+            final index = entry.key;
+            final act = entry.value;
+            final isLast = index == _upcomingActivities.length - 1;
+            
+            final startTime = act['parsedStartTime'] as DateTime;
+            final month = DateFormat('MMM').format(startTime).toUpperCase();
+            final day = DateFormat('dd').format(startTime);
+            final time = DateFormat('h:mm a').format(startTime);
+            
+            Color dotColor = const Color(0xFF1E5AE6);
+            if (act['type'] == 'transport') dotColor = const Color(0xFFEA580C);
+            else if (act['type'] == 'food') dotColor = const Color(0xFFF59E0B);
+            else if (act['type'] == 'lodging') dotColor = const Color(0xFF9333EA);
+
+            return _buildTimelineItem(
+              dotColor: dotColor,
+              month: month,
+              day: day,
+              title: act['title'] ?? 'Activity',
+              location: act['location']?['name'] ?? '',
+              time: time,
+              timeColor: dotColor,
+              isLast: isLast,
+            );
+          }),
       ],
     );
   }
@@ -665,7 +782,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                 child: _buildOverviewCard(
                   icon: Icons.people_alt_outlined,
                   iconColor: const Color(0xFF20C060),
-                  value: '8',
+                  value: '${widget.tripData?['membersCount'] ?? 1}',
                   label: 'Members',
                   actionLabel: 'View all',
                   actionColor: const Color(0xFF20C060),
@@ -681,7 +798,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                 child: _buildOverviewCard(
                   icon: Icons.calendar_today_outlined,
                   iconColor: const Color(0xFF1E5AE6),
-                  value: '7 Days',
+                  value: _getTripDuration(),
                   label: 'Duration',
                   actionLabel: 'View details',
                   actionColor: const Color(0xFF1E5AE6),
@@ -692,12 +809,12 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
             Expanded(
               child: GestureDetector(
                 onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.destinations);
+                  Navigator.pushNamed(context, AppRoutes.destinations, arguments: {'tripData': widget.tripData});
                 },
                 child: _buildOverviewCard(
                   icon: Icons.location_on_outlined,
                   iconColor: const Color(0xFF9333EA),
-                  value: '3',
+                  value: '${widget.tripData?['destinations']?.length ?? 1}',
                   label: 'Destinations',
                   actionLabel: 'View all',
                   actionColor: const Color(0xFF9333EA),
@@ -777,181 +894,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     );
   }
 
-  Widget _buildRecentActivitySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Recent Activity',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            GestureDetector(
-              onTap: () {},
-              child: Row(
-                children: const [
-                  Text(
-                    'View All',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E5AE6),
-                    ),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_forward,
-                    size: 14,
-                    color: Color(0xFF1E5AE6),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        // Activity feed list
-        _buildActivityItem(
-          avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-          boldText: 'Rahul Sharma',
-          normalText: ' added an expense',
-          subtitle: 'Dinner at Le Meurice',
-          rightWidget: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Text(
-                '- ₹4,850',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                '2h ago',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFF94A3B8),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildActivityItem(
-          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-          boldText: 'You',
-          normalText: ' uploaded 5 photos',
-          subtitle: 'Eiffel Tower Visit',
-          rightWidget: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.photo_library_outlined, size: 18, color: Color(0xFF94A3B8)),
-              SizedBox(width: 6),
-              Text(
-                '4h ago',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFF94A3B8),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildActivityItem(
-          avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
-          boldText: 'Sneha Joshi',
-          normalText: ' completed a task',
-          subtitle: 'Book Seine River Cruise Tickets',
-          rightWidget: const Center(
-            child: Text(
-              '6h ago',
-              style: TextStyle(
-                fontSize: 10,
-                color: Color(0xFF94A3B8),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
-  Widget _buildActivityItem({
-    required String avatarUrl,
-    required String boldText,
-    required String normalText,
-    required String subtitle,
-    required Widget rightWidget,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.01),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Avatar
-          CircleAvatar(
-            radius: 18,
-            backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(avatarUrl)),
-          ),
-          const SizedBox(width: 12),
-          // Text
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                RichText(
-                  text: TextSpan(
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF0F172A),
-                    ),
-                    children: [
-                      TextSpan(
-                        text: boldText,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      TextSpan(text: normalText),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Right widget
-          rightWidget,
-        ],
-      ),
-    );
-  }
 
   Widget _buildFloatingChatButton() {
     return GestureDetector(

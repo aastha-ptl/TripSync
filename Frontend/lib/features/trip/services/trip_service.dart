@@ -50,6 +50,67 @@ class TripService {
     }
   }
 
+  Future<Map<String, dynamic>> updateTrip(String tripId, Map<String, dynamic> tripData) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}${ApiEndpoints.trips}/$tripId');
+      
+      if (tripData.containsKey('coverImage') && tripData['coverImage'] != null) {
+        // If it starts with http, we don't send it as a file (it's already on the server)
+        if (tripData['coverImage'].toString().startsWith('http')) {
+          final requestData = Map<String, dynamic>.from(tripData);
+          requestData.remove('coverImage'); // backend ignores string coverImage for put anyway
+          final response = await http.put(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(requestData),
+          );
+          return jsonDecode(response.body);
+        }
+
+        var request = http.MultipartRequest('PUT', url);
+        request.headers['Authorization'] = 'Bearer $token';
+        
+        tripData.forEach((key, value) {
+          if (key != 'coverImage') {
+            request.fields[key] = value.toString();
+          }
+        });
+        
+        request.files.add(await http.MultipartFile.fromPath(
+          'coverImage',
+          tripData['coverImage'],
+        ));
+        
+        var streamedResponse = await request.send();
+        var response = await http.Response.fromStream(streamedResponse);
+        return jsonDecode(response.body);
+      } else {
+        final requestData = Map<String, dynamic>.from(tripData);
+        requestData.remove('coverImage'); // Just in case it's null
+        final response = await http.put(
+          url,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode(requestData),
+        );
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
   Future<Map<String, dynamic>> getInviteInfo(String inviteToken) async {
     try {
       final baseUrl = await ApiEndpoints.getBaseUrl();
@@ -166,6 +227,50 @@ class TripService {
           'Authorization': 'Bearer $token',
         },
         body: jsonEncode({'status': status}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> getAllPendingRequests() async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}/trips/all-pending-requests');
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteTrip(String tripId) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('${baseUrl}${ApiEndpoints.trips}/$tripId');
+      final response = await http.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
       );
       return jsonDecode(response.body);
     } catch (e) {

@@ -6,7 +6,9 @@ import '../services/trip_service.dart';
 import  '../../../core/constants/app_constants.dart';
 
 class AddTripScreen extends StatefulWidget {
-  const AddTripScreen({super.key});
+  final Map<String, dynamic>? tripData;
+
+  const AddTripScreen({super.key, this.tripData});
 
   @override
   State<AddTripScreen> createState() => _AddTripScreenState();
@@ -29,6 +31,30 @@ class _AddTripScreenState extends State<AddTripScreen> {
   bool _cancelPendingRequest = false;
 
   final List<String> _tripTypes = ['Friends', 'Family', 'Solo', 'Business', 'Couple'];
+  String? _existingImageUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.tripData != null) {
+      final t = widget.tripData!;
+      _nameController.text = t['title'] ?? t['name'] ?? '';
+      _descriptionController.text = t['description'] ?? '';
+      
+      if (t['startDate'] != null) {
+        _startDate = DateTime.tryParse(t['startDate']);
+      }
+      if (t['endDate'] != null) {
+        _endDate = DateTime.tryParse(t['endDate']);
+      }
+      if (t['tripType'] != null && _tripTypes.contains(t['tripType'])) {
+        _selectedTripType = t['tripType'];
+      }
+      if (t['imageUrl'] != null || t['coverImage'] != null) {
+        _existingImageUrl = t['imageUrl'] ?? t['coverImage'];
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -145,6 +171,7 @@ class _AddTripScreenState extends State<AddTripScreen> {
         _isLoading = true;
       });
 
+      final isEditing = widget.tripData != null;
       final tripData = {
         'name': _nameController.text.trim(),
         'description': _descriptionController.text.trim(),
@@ -155,7 +182,12 @@ class _AddTripScreenState extends State<AddTripScreen> {
         if (_selectedImagePath != null) 'coverImage': _selectedImagePath,
       };
 
-      final response = await _tripService.createTrip(tripData);
+      Map<String, dynamic> response;
+      if (isEditing) {
+        response = await _tripService.updateTrip(widget.tripData!['_id'] ?? widget.tripData!['id'], tripData);
+      } else {
+        response = await _tripService.createTrip(tripData);
+      }
 
       setState(() {
         _isLoading = false;
@@ -164,6 +196,17 @@ class _AddTripScreenState extends State<AddTripScreen> {
       if (!mounted) return;
 
       if (response['success'] == true) {
+        if (isEditing) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Trip updated successfully!'),
+              backgroundColor: AppColors.secondary,
+            ),
+          );
+          Navigator.pop(context, true);
+          return;
+        }
+
         final inviteToken = response['data']?['inviteToken'] ?? 'Unknown token';
         final String? _pcIp = AppConstants.pcIp;
         final inviteLink = 'http://$_pcIp:5000/join/$inviteToken';
@@ -975,12 +1018,12 @@ class _AddTripScreenState extends State<AddTripScreen> {
                                       ),
                                     ),
                                   ]
-                                : const [
-                                    Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                                    SizedBox(width: 8),
+                                : [
+                                    const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                                    const SizedBox(width: 8),
                                     Text(
-                                      'Create Trip',
-                                      style: TextStyle(
+                                      widget.tripData != null ? 'Update Trip' : 'Create Trip',
+                                      style: const TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                         color: Colors.white,
@@ -1049,17 +1092,17 @@ class _AddTripScreenState extends State<AddTripScreen> {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
-                  'Create New Trip',
+                  widget.tripData != null ? 'Update Trip' : 'Create New Trip',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
-                SizedBox(height: 2),
-                Text(
+                const SizedBox(height: 2),
+                const Text(
                   'Fill in the details to plan your trip',
                   style: TextStyle(
                     fontSize: 12,

@@ -124,10 +124,14 @@ export const createTrip = async (req, res) => {
 export const getUserTrips = async (req, res) => {
   try {
     const participants = await TripParticipant.find({ userId: req.user._id, status: "approved" }).populate("tripId");
-    const trips = participants.map(p => ({
-      ...p.tripId.toObject(),
-      participantStatus: p.status,
-      participantRole: p.role
+    const trips = await Promise.all(participants.map(async (p) => {
+      const membersCount = await TripParticipant.countDocuments({ tripId: p.tripId._id, status: "approved" });
+      return {
+        ...p.tripId.toObject(),
+        participantStatus: p.status,
+        participantRole: p.role,
+        membersCount: membersCount
+      };
     }));
     res.status(200).json({ success: true, data: trips });
   } catch (error) {
@@ -208,5 +212,106 @@ export const joinTrip = async (req, res) => {
   } catch (error) {
     console.error("Join trip error:", error);
     res.status(500).json({ success: false, message: "Server error joining trip." });
+  }
+};
+
+export const updateTrip = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const { name, description, startDate, endDate } = req.body;
+
+    const participant = await TripParticipant.findOne({ tripId, userId: req.user._id, status: "approved" });
+    if (!participant || participant.role !== "tripLeader") {
+      await deleteUploadedFile(req.file);
+      return res.status(403).json({ success: false, message: "You don't have permission to edit this trip." });
+    }
+
+    const trip = await Trip.findById(tripId);
+    if (!trip) {
+      await deleteUploadedFile(req.file);
+      return res.status(404).json({ success: false, message: "Trip not found." });
+    }
+
+    if (name) trip.name = name;
+    if (description !== undefined) trip.description = description;
+    if (startDate) trip.startDate = startDate;
+    if (endDate) trip.endDate = endDate;
+
+    if (req.file && req.file.path) {
+      if (trip.coverImage) {
+        // delete old image from cloudinary? We might skip it for now to avoid complexity or if it's external URL
+      }
+      trip.coverImage = req.file.path;
+    }
+
+    await trip.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Trip updated successfully",
+      data: trip,
+    });
+  } catch (error) {
+    console.error("Update trip error:", error);
+    await deleteUploadedFile(req.file);
+    res.status(500).json({ success: false, message: "Server error updating trip." });
+  }
+};
+
+export const getAllPendingRequests = async (req, res) => {
+  try {
+    // Find all pending JoinRequests sent by the logged-in user
+    const pendingRequests = await JoinRequest.find({
+      userId: req.user._id,
+      status: "pending"
+    }).populate("tripId", "name coverImage").lean();
+
+    // Format the requests
+    const formattedRequests = pendingRequests.map(reqItem => {
+      const trip = reqItem.tripId;
+      return {
+        id: reqItem._id,
+        tripId: trip?._id,
+        tripName: trip ? trip.name : "Unknown Trip",
+        tripCoverImage: trip ? trip.coverImage : null,
+        type: reqItem.requestedRole === "soloTraveler" ? "Solo" : "Family",
+        group: reqItem.requestedRole === "soloTraveler" ? "Solo Traveler" : "Family Group",
+        time: reqItem.createdAt,
+      };
+    });
+
+    res.status(200).json({ success: true, data: formattedRequests });
+  } catch (error) {
+    console.error("Error fetching user's pending requests:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+export const deleteTrip = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+
+    const participant = await TripParticipant.findOne({ tripId, userId: req.user._id, status: 'approved' });
+    if (!participant || participant.role !== 'tripLeader') {
+      return res.status(403).json({ success: false, message: 'You do not have permission to delete this trip.' });
+    }
+
+    const trip = await Trip.findById(tripId);
+    if (!trip) {
+      return res.status(404).json({ success: false, message: 'Trip not found.' });
+    }
+
+    if (trip.coverImage) {
+      // Opt out of cloudinary image deletion for safety
+    }
+
+    await Trip.findByIdAndDelete(tripId);
+    await TripParticipant.deleteMany({ tripId });
+    await JoinRequest.deleteMany({ tripId });
+
+    res.status(200).json({ success: true, message: 'Trip deleted successfully.' });
+  } catch (error) {
+    console.error('Delete trip error:', error);
+    res.status(500).json({ success: false, message: 'Server error deleting trip.' });
   }
 };
