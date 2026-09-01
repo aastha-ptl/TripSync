@@ -470,23 +470,28 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Text(
-                          activity['title'],
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            activity['title'],
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Row(
                         mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           _buildStatusBadge(activity['status']),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           GestureDetector(
                             onTap: () {
                               setState(() {
@@ -508,18 +513,21 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                             ),
                           ),
                           if (!widget.isSoloTraveler) ...[
-                            const SizedBox(width: 4),
-                            PopupMenuButton<String>(
-                              padding: EdgeInsets.zero,
-                              icon: const Icon(Icons.more_vert, size: 18, color: AppColors.textSecondary),
-                              onSelected: (value) {
-                                if (value == 'edit') {
-                                  _editActivity(activity);
-                                } else if (value == 'delete') {
-                                  _deleteActivity(activity);
-                                }
-                              },
-                              itemBuilder: (context) => [
+                            const SizedBox(width: 2),
+                            SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: PopupMenuButton<String>(
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.more_vert, size: 18, color: AppColors.textSecondary),
+                                onSelected: (value) {
+                                  if (value == 'edit') {
+                                    _editActivity(activity);
+                                  } else if (value == 'delete') {
+                                    _deleteActivity(activity);
+                                  }
+                                },
+                                itemBuilder: (context) => [
                                 const PopupMenuItem(
                                   value: 'edit',
                                   child: Row(
@@ -540,7 +548,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                                     ],
                                   ),
                                 ),
-                              ],
+                                ],
+                              ),
                             ),
                           ],
                         ],

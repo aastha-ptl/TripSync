@@ -7,6 +7,8 @@ import '../services/trip_service.dart';
 import '../../profile/services/user_service.dart';
 import 'trip_details_screen.dart';
 import 'solo_traveler_dashboard_screen.dart';
+import 'family_leader_dashboard_screen.dart';
+import 'family_member_dashboard_screen.dart';
 import 'member_dashboard_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
@@ -715,6 +717,28 @@ class _TripsScreenState extends State<TripsScreen> {
         context,
         MaterialPageRoute(
           builder: (context) => SoloTravelerDashboardScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
+          ),
+        ),
+      );
+    } else if (role == 'familyleader' || role == 'family_leader') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FamilyLeaderDashboardScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
+          ),
+        ),
+      );
+    } else if (role == 'familymember' || role == 'family_member') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FamilyMemberDashboardScreen(
             tripData: trip,
             profilePhotoUrl: _profilePhotoUrl,
             profileName: _profileName,

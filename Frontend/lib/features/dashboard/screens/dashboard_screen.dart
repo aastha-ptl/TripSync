@@ -6,6 +6,8 @@ import '../../profile/screens/profile_screen.dart';
 import '../../trip/screens/trips_screen.dart';
 import '../../trip/screens/trip_details_screen.dart';
 import '../../trip/screens/solo_traveler_dashboard_screen.dart';
+import '../../trip/screens/family_leader_dashboard_screen.dart';
+import '../../trip/screens/family_member_dashboard_screen.dart';
 import '../../trip/screens/member_dashboard_screen.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../auth/services/auth_service.dart';
@@ -817,6 +819,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         context,
         MaterialPageRoute(
           builder: (context) => SoloTravelerDashboardScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
+          ),
+        ),
+      );
+    } else if (role == 'familyleader' || role == 'family_leader') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FamilyLeaderDashboardScreen(
+            tripData: trip,
+            profilePhotoUrl: _profilePhotoUrl,
+            profileName: _profileName,
+          ),
+        ),
+      );
+    } else if (role == 'familymember' || role == 'family_member') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FamilyMemberDashboardScreen(
             tripData: trip,
             profilePhotoUrl: _profilePhotoUrl,
             profileName: _profileName,

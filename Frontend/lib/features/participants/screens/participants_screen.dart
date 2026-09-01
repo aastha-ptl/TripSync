@@ -8,6 +8,7 @@ import '../screens/join_requests_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
 import '../../../core/utils/date_formatter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ParticipantsScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -482,53 +483,59 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                               final hasFamilyMembers = isFamilyLeader && familyMembers.isNotEmpty;
 
                               Widget titleWidget = Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      '${member['name']}${hasFamilyMembers ? ' (+${familyMembers.length})' : ''}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.textPrimary,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        '${member['name']}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  if (isLeader) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFEFF6FF),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: const Text(
-                                        'Leader',
-                                        style: TextStyle(
-                                          fontSize: 8,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF1E5AE6),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      if (isLeader)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFEFF6FF),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Text(
+                                            'Leader',
+                                            style: TextStyle(
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF1E5AE6),
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                  ],
-                                  if (isFamilyLeader && !isLeader) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF0FDF4),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: const Text(
-                                        'Family Leader',
-                                        style: TextStyle(
-                                          fontSize: 8,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF16A34A),
+                                      if (isFamilyLeader && !isLeader)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF0FDF4),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Text(
+                                            'Family Leader',
+                                            style: TextStyle(
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF16A34A),
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ],
                               );
 
@@ -546,41 +553,164 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
 
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(color: const Color(0xFFE2E8F0)),
                                 ),
-                                child: hasFamilyMembers ? Theme(
-                                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                                  child: ExpansionTile(
-                                    tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-                                    leading: leadingWidget,
-                                    title: titleWidget,
-                                    subtitle: subtitleWidget,
-                                    children: [
-                                      Divider(height: 1, color: Colors.grey[200]),
-                                      ...familyMembers.map((fm) => ListTile(
-                                        contentPadding: const EdgeInsets.only(left: 70, right: 16, top: 4, bottom: 4),
-                                        title: Text(fm['name'] ?? 'Family Member', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                                        subtitle: Text('${fm['relationship'] ?? 'Relative'} • ${fm['age'] ?? '?'} yrs\n${fm['email'] ?? 'No email'}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                                      )).toList(),
-                                      const SizedBox(height: 8),
+                                child: Column(
+                                  children: [
+                                    if (hasFamilyMembers) ...[
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.family_restroom, color: AppColors.primary, size: 16),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${familyMembers.length + 1} Members Family',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                                      const SizedBox(height: 12),
                                     ],
-                                  ),
-                                ) : ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                                  leading: leadingWidget,
-                                  title: titleWidget,
-                                  subtitle: subtitleWidget,
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.call_outlined, color: AppColors.primary, size: 20),
-                                    onPressed: () {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Calling ${member['name']}...')),
-                                      );
-                                    },
-                                  ),
+                                    Row(
+                                      children: [
+                                        leadingWidget,
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              titleWidget,
+                                              const SizedBox(height: 2),
+                                              subtitleWidget,
+                                            ],
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.call_outlined, color: AppColors.primary, size: 20),
+                                          onPressed: () async {
+                                            final phone = member['phone'];
+                                            if (phone != null && phone.toString().isNotEmpty) {
+                                              final Uri launchUri = Uri(
+                                                scheme: 'tel',
+                                                path: phone.toString(),
+                                              );
+                                              if (await canLaunchUrl(launchUri)) {
+                                                await launchUrl(launchUri);
+                                              } else {
+                                                if (context.mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text('Could not launch dialer for ${member['name']}')),
+                                                  );
+                                                }
+                                              }
+                                            } else {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(content: Text('No phone number available for ${member['name']}')),
+                                                );
+                                              }
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                    if (hasFamilyMembers) ...[
+                                      const SizedBox(height: 12),
+                                      Column(
+                                        children: familyMembers.map((fm) {
+                                          return Container(
+                                            margin: const EdgeInsets.only(bottom: 6),
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFF8FAFC),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                CircleAvatar(
+                                                  radius: 14,
+                                                  backgroundColor: Colors.white,
+                                                  backgroundImage: (fm['avatar'] != null && fm['avatar'].toString().isNotEmpty)
+                                                      ? CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(fm['avatar']))
+                                                      : null,
+                                                  child: (fm['avatar'] == null || fm['avatar'].toString().isEmpty)
+                                                      ? Text(
+                                                          (fm['name'] != null && fm['name'].toString().isNotEmpty) 
+                                                              ? fm['name'].toString()[0].toUpperCase() 
+                                                              : 'U',
+                                                          style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.bold),
+                                                        )
+                                                      : null,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: Text(
+                                                              fm['name'] ?? 'Unknown',
+                                                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                                                              overflow: TextOverflow.ellipsis,
+                                                            ),
+                                                          ),
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                            decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(6)),
+                                                            child: const Text('Member', style: TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.bold)),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        '${fm['relationship'] ?? 'Family'} • ${fm['phone'] ?? fm['mobile'] ?? fm['email'] ?? 'No contact info'}',
+                                                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(Icons.call_outlined, color: AppColors.primary, size: 18),
+                                                  onPressed: () async {
+                                                    final phone = fm['phone'] ?? fm['mobile'] ?? fm['email'];
+                                                    if (phone != null && phone.toString().isNotEmpty && RegExp(r'^[0-9+\-\s]+$').hasMatch(phone.toString())) {
+                                                      final Uri launchUri = Uri(
+                                                        scheme: 'tel',
+                                                        path: phone.toString(),
+                                                      );
+                                                      if (await canLaunchUrl(launchUri)) {
+                                                        await launchUrl(launchUri);
+                                                      } else {
+                                                        if (context.mounted) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            SnackBar(content: Text('Could not launch dialer for ${fm['name']}')),
+                                                          );
+                                                        }
+                                                      }
+                                                    } else {
+                                                      if (context.mounted) {
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          SnackBar(content: Text('No valid phone number available for ${fm['name']}')),
+                                                        );
+                                                      }
+                                                    }
+                                                  },
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               );
                             }).toList(),

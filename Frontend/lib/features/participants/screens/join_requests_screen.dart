@@ -309,16 +309,18 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle bar
+      builder: (context) => Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
             Container(
               width: 40,
               height: 4,
@@ -374,13 +376,22 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
                 color: const Color(0xFFEFF6FF),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(
-                user['group'] ?? 'Member',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (user['type'] == 'Family') ...[
+                    const Icon(Icons.workspace_premium, color: AppColors.primary, size: 14),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    user['type'] == 'Family' ? 'Family Leader' : (user['group'] ?? 'Member'),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 24),
@@ -388,6 +399,94 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
             _buildUserInfoRow(Icons.phone_outlined, 'Phone', user['phone'] ?? 'N/A'),
             const SizedBox(height: 16),
             _buildUserInfoRow(Icons.access_time_outlined, 'Requested', user['time'] != null ? _formatDate(user['time']) : 'Unknown'),
+            if (user['type'] == 'Family') ...[
+              // Beautiful Family Members Section without ExpansionTile
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.family_restroom, color: AppColors.primary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Family Group',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF0F172A)),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${user['totalMembers'] ?? 1} Total',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (user['familyMembers'] != null && (user['familyMembers'] as List).isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: (user['familyMembers'] as List).asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final member = entry.value;
+                      final isLast = index == (user['familyMembers'] as List).length - 1;
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: Colors.white,
+                              backgroundImage: (member['avatar'] != null && member['avatar'].toString().isNotEmpty)
+                                  ? CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(member['avatar']))
+                                  : null,
+                              child: (member['avatar'] == null || member['avatar'].toString().isEmpty)
+                                  ? Text(
+                                      (member['name'] != null && member['name'].toString().isNotEmpty) 
+                                          ? member['name'].toString()[0].toUpperCase() 
+                                          : 'U',
+                                      style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    member['name'] ?? 'Unknown',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF0F172A)),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${member['relationship'] ?? 'Member'} • Age: ${member['age'] ?? 'N/A'}',
+                                    style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+            ],
             const SizedBox(height: 32),
             // Action Buttons
             Row(
@@ -429,6 +528,7 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
             const SizedBox(height: 16),
           ],
         ),
+      ),
       ),
     );
   }
@@ -574,11 +674,7 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
                   onTap: () => _showUserInfoModal(req),
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(0.01),
@@ -587,82 +683,192 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
                         ),
                       ],
                     ),
-                  child: Row(
-                    children: [
-                      // Avatar
-                      CircleAvatar(
-                        radius: 24,
-                        backgroundColor: Colors.grey[200],
-                        backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(req['avatar'], fallbackName: req['name'])),
-                        child: null,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                      const SizedBox(width: 12),
-                      // Details
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              req['name'],
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Row(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Material(
+                          color: Colors.white,
+                          elevation: 0.1,
+                          shadowColor: Colors.transparent,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          // Avatar
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundColor: Colors.grey[200],
+                            backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(req['avatar'], fallbackName: req['name'])),
+                            child: null,
+                          ),
+                          const SizedBox(width: 12),
+                          // Details
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFEFF6FF),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    req['group'],
-                                    style: const TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.primary,
-                                    ),
+                                Text(
+                                  req['name'],
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
                                   ),
                                 ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    req['time'],
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: Color(0xFF94A3B8),
+                                const SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEFF6FF),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        req['group'],
+                                        style: const TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        req['time'] != null ? _formatDate(req['time']) : '',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: Color(0xFF94A3B8),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                      // Actions
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.close, color: Color(0xFFEF4444), size: 20),
-                            onPressed: () => _declineRequest(index),
                           ),
-                          const SizedBox(width: 4),
-                          IconButton(
-                            icon: const Icon(Icons.check, color: Color(0xFF20C060), size: 20),
-                            onPressed: () => _acceptRequest(index),
+                          // Actions
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.close, color: Color(0xFFEF4444), size: 20),
+                                onPressed: () => _declineRequest(index),
+                              ),
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: const Icon(Icons.check, color: Color(0xFF20C060), size: 20),
+                                onPressed: () => _acceptRequest(index),
+                              ),
+                            ],
                           ),
                         ],
                       ),
+                      if (req['type'] == 'Family') ...[
+                        const SizedBox(height: 12),
+                        const Divider(color: Color(0xFFE2E8F0)),
+                        Row(
+                          children: [
+                            const Icon(Icons.family_restroom, color: AppColors.primary, size: 16),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Family Group',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${req['totalMembers'] ?? 1} Members',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppColors.primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (req['familyMembers'] != null && (req['familyMembers'] as List).isNotEmpty)
+                          Column(
+                            children: (req['familyMembers'] as List).map((member) {
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 14,
+                                      backgroundColor: Colors.white,
+                                      backgroundImage: (member['avatar'] != null && member['avatar'].toString().isNotEmpty)
+                                          ? CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(member['avatar']))
+                                          : null,
+                                      child: (member['avatar'] == null || member['avatar'].toString().isEmpty)
+                                          ? Text(
+                                              (member['name'] != null && member['name'].toString().isNotEmpty) 
+                                                  ? member['name'].toString()[0].toUpperCase() 
+                                                  : 'U',
+                                              style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.bold),
+                                            )
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  member['name'] ?? 'Unknown',
+                                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(6)),
+                                                child: const Text('Member', style: TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.bold)),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${member['relationship'] ?? 'Family'} • ${member['phone'] ?? member['mobile'] ?? 'No phone'}',
+                                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                      ],
                     ],
                   ),
-                ),
-              );
+                  ),
+                  ),
+                  ),
+                  ),
+                  ),
+                );
             },
           ),
       floatingActionButton: Container(

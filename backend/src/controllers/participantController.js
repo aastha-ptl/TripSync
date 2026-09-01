@@ -66,6 +66,8 @@ export const getJoinRequests = async (req, res) => {
         avatar: user?.profilePhoto || null,
         phone: user?.phone || "N/A",
         time: reqItem.createdAt,
+        familyMembers: reqItem.familyMembers || [],
+        totalMembers: reqItem.requestedRole === "soloTraveler" ? 1 : 1 + (reqItem.familyMembers?.length || 0),
       };
     });
 

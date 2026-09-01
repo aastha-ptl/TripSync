@@ -14,6 +14,8 @@ class DocumentsScreen extends StatefulWidget {
   final String? profilePhotoUrl;
   final String? profileName;
   final bool isSoloTraveler;
+  final bool isFamilyLeader;
+  final bool isPhotoGalleryOnly;
 
   const DocumentsScreen({
     super.key, 
@@ -22,6 +24,8 @@ class DocumentsScreen extends StatefulWidget {
     this.profilePhotoUrl,
     this.profileName,
     this.isSoloTraveler = false,
+    this.isFamilyLeader = false,
+    this.isPhotoGalleryOnly = false,
   });
 
   @override
@@ -54,14 +58,20 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildPhotoGallerySection(),
-                    const SizedBox(height: 24),
-                    _buildMyDocumentsSection(),
-                    const SizedBox(height: 24),
-                    if (!widget.isSoloTraveler) _buildMemberDocumentsSection(),
-                    if (!widget.isSoloTraveler) const SizedBox(height: 24),
-                    _buildTripDocumentsSection(),
-                    const SizedBox(height: 24),
-                    _buildUploadDocumentBox(),
+                    if (!widget.isPhotoGalleryOnly) ...[
+                      const SizedBox(height: 24),
+                      _buildMyDocumentsSection(),
+                      const SizedBox(height: 24),
+                      if (!widget.isSoloTraveler) _buildMemberDocumentsSection(),
+                      if (!widget.isSoloTraveler) const SizedBox(height: 24),
+                      _buildTripDocumentsSection(),
+                      const SizedBox(height: 24),
+                      _buildUploadDocumentBox(),
+                      if (widget.isFamilyLeader) ...[
+                        const SizedBox(height: 16),
+                        _buildAddFamilyMemberButton(),
+                      ],
+                    ],
                     const SizedBox(height: 100), // Extra space for FAB
                   ],
                 ),
@@ -480,7 +490,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             icon: Icons.people_outline,
             iconBgColor: const Color(0xFFEFF6FF),
             iconColor: const Color(0xFF0072FF),
-            title: 'Member Documents (Visible to Trip Leader Only)',
+            title: widget.isFamilyLeader ? 'Family Member Documents' : 'Member Documents (Visible to Trip Leader Only)',
             subtitle: 'View documents shared by trip members',
             onViewAll: () => Navigator.pushNamed(context, AppRoutes.membersList),
           ),
@@ -1014,6 +1024,45 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 SizedBox(height: 2),
                 Text(
                   'PDF, JPG, PNG up to 10MB',
+                  style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddFamilyMemberButton() {
+    return GestureDetector(
+      onTap: () {
+        Navigator.pushNamed(context, AppRoutes.addTrip); // Or specific add member route, fallback to add trip as per UI logic
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF20C060).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF20C060).withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.group_add_rounded, color: Color(0xFF20C060), size: 24),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Text(
+                  'Add Family Member Dashboard',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Invite or manage family members',
                   style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
                 ),
               ],
