@@ -12,6 +12,10 @@ const paidBySchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    guestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
     guestName: {
       type: String,
       default: null,
@@ -54,6 +58,7 @@ const expenseSchema = new mongoose.Schema(
       required: true,
       trim: true,
       uppercase: true,
+      default: "INR",
       maxlength: 10,
     },
 
@@ -83,6 +88,13 @@ const expenseSchema = new mongoose.Schema(
     receiptUrl: {
       type: String,
       default: null,
+    },
+
+    status: {
+      type: String,
+      enum: ["active", "deleted"],
+      default: "active",
+      index: true,
     },
 
     createdBy: {

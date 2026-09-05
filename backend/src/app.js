@@ -35,11 +35,13 @@ import tripRoutes from "./routes/tripRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import participantRoutes from "./routes/participantRoutes.js";
 import itineraryRoutes from "./routes/itineraryRoutes.js";
+import expenseRoutes from "./routes/expenseRoutes.js";
 
 app.use("/api/auth", authRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/trips/:tripId", participantRoutes);
 app.use("/api/trips/:tripId/itinerary", itineraryRoutes);
+app.use("/api/trips/:tripId/expenses", expenseRoutes);
 app.use("/api/users", userRoutes);
 
 app.get("/join/:inviteToken", (req, res) => {

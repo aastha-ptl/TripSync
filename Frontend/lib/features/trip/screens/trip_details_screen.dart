@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../documents/screens/documents_screen.dart';
 import '../../participants/screens/participants_screen.dart';
-
+import '../../expenses/screens/trip_expense_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
@@ -86,6 +86,22 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_selectedNavIndex == 1) {
+      return Scaffold(
+        body: TripExpenseScreen(
+          tripData: widget.tripData,
+          profilePhotoUrl: widget.profilePhotoUrl,
+          profileName: widget.profileName,
+          onBack: () {
+            setState(() {
+              _selectedNavIndex = 0;
+            });
+          },
+        ),
+        bottomNavigationBar: _buildBottomNavigationBar(),
+      );
+    }
+
     if (_selectedNavIndex == 2) {
       return Scaffold(
         body: DocumentsScreen(
