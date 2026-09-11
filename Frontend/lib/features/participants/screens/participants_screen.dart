@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/routes/app_routes.dart';
 
 import '../../profile/screens/profile_screen.dart';
+import '../../profile/services/user_service.dart';
 import '../../trip/services/trip_service.dart';
 import '../screens/join_requests_screen.dart';
+import '../screens/manage_family_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
 import '../../../core/utils/date_formatter.dart';
@@ -16,6 +17,7 @@ class ParticipantsScreen extends StatefulWidget {
   final String? profilePhotoUrl;
   final String? profileName;
   final bool isSoloTraveler;
+  final String? userRole;
 
   const ParticipantsScreen({
     super.key, 
@@ -24,6 +26,7 @@ class ParticipantsScreen extends StatefulWidget {
     this.profilePhotoUrl,
     this.profileName,
     this.isSoloTraveler = false,
+    this.userRole,
   });
 
   @override
@@ -32,11 +35,16 @@ class ParticipantsScreen extends StatefulWidget {
 
 class _ParticipantsScreenState extends State<ParticipantsScreen> {
   final TripService _tripService = TripService();
+  final UserService _userService = UserService();
   String _searchQuery = '';
   bool _isLoading = true;
   List<Map<String, dynamic>> _participants = [];
   int _pendingRequestsCount = 0;
-  final Map<String, bool> _expandedFamilies = {};
+  String? _currentUserRole;
+  String? _fetchedTripType;
+  String? _fetchedBusinessTripType;
+
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -44,29 +52,98 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
     _fetchParticipants();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool get _isFamilyTrip {
+    final tripType = _fetchedTripType ?? widget.tripData?['tripType'];
+    final businessTripType = _fetchedBusinessTripType ?? widget.tripData?['businessTripType'];
+    return tripType == 'Family' ||
+        (tripType == 'Business' && businessTripType == 'Employees + Family');
+  }
+
+  bool get _isTripLeader {
+    final role = (_currentUserRole ??
+            widget.userRole ??
+            widget.tripData?['originalRole'] ??
+            widget.tripData?['participantRole'])
+        ?.toString()
+        .toLowerCase();
+    return role == 'tripleader' ||
+        role == 'trip_leader' ||
+        role == 'creator' ||
+        role == 'leader';
+  }
+
+  bool get _canManageFamily {
+    if (!_isFamilyTrip) return false;
+    final role = (_currentUserRole ??
+            widget.userRole ??
+            widget.tripData?['originalRole'] ??
+            widget.tripData?['participantRole'])
+        ?.toString()
+        .toLowerCase();
+    if (role == 'familymember' || role == 'family_member' || role == 'member') {
+      return false;
+    }
+    // Trip leader, family leader, or solo traveler / individual in family trip
+    return true;
+  }
+
   Future<void> _fetchParticipants() async {
-    if (widget.tripData == null || widget.tripData!['id'] == null) {
+    final tripId = widget.tripData?['id'] ?? widget.tripData?['_id'];
+    if (tripId == null) {
       setState(() => _isLoading = false);
       return;
     }
 
     final responses = await Future.wait([
-      _tripService.getTripParticipants(widget.tripData!['id']),
-      _tripService.getJoinRequests(widget.tripData!['id']),
+      _tripService.getTripParticipants(tripId.toString()),
+      _tripService.getJoinRequests(tripId.toString()),
+      _userService.getProfile(),
     ]);
 
     final response = responses[0];
     final reqResponse = responses[1];
+    final profileRes = responses[2];
 
     int count = 0;
-    if (reqResponse['success'] == true) {
+    if (reqResponse['success'] == true && reqResponse['data'] is List) {
       count = (reqResponse['data'] as List).length;
     }
 
+    String? currentUserId;
+    if (profileRes['success'] == true && profileRes['data'] != null) {
+      currentUserId = profileRes['data']['_id']?.toString();
+    }
+
     if (response['success'] == true) {
+      final List<dynamic> rawData = response['data'] ?? [];
+      final List<Map<String, dynamic>> participantsList = rawData.map((e) => Map<String, dynamic>.from(e)).toList();
+
+      String? detectedRole;
+      if (currentUserId != null) {
+        for (var p in participantsList) {
+          final pUserId = p['userId']?.toString() ?? p['user']?['_id']?.toString() ?? p['user']?.toString();
+          if (pUserId == currentUserId.toString()) {
+            detectedRole = p['role']?.toString();
+            break;
+          }
+        }
+      }
+
+      final fetchedType = response['tripType']?.toString();
+      final fetchedBType = response['businessTripType']?.toString();
+
       setState(() {
-        _participants = List<Map<String, dynamic>>.from(response['data']);
+        _participants = participantsList;
         _pendingRequestsCount = count;
+        _currentUserRole = detectedRole;
+        if (fetchedType != null) _fetchedTripType = fetchedType;
+        if (fetchedBType != null) _fetchedBusinessTripType = fetchedBType;
         _isLoading = false;
       });
     } else {
@@ -85,10 +162,39 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
   }
 
   List<Map<String, dynamic>> get _filteredParticipants {
-    if (_searchQuery.isEmpty) return _participants;
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _participants;
+
     return _participants.where((p) {
-      return p['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          p['group'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
+      final name = (p['name'] ?? '').toString().toLowerCase();
+      final group = (p['group'] ?? '').toString().toLowerCase();
+      final type = (p['type'] ?? '').toString().toLowerCase();
+      final phone = (p['phone'] ?? '').toString().toLowerCase();
+      final email = (p['email'] ?? '').toString().toLowerCase();
+
+      final matchesLeader = name.contains(query) ||
+          group.contains(query) ||
+          type.contains(query) ||
+          phone.contains(query) ||
+          email.contains(query);
+
+      if (matchesLeader) return true;
+
+      // Check all nested family members
+      final familyMembers = p['familyMembers'] as List<dynamic>? ?? [];
+      final matchesFamilyMember = familyMembers.any((fm) {
+        final fmName = (fm['name'] ?? '').toString().toLowerCase();
+        final fmEmail = (fm['email'] ?? '').toString().toLowerCase();
+        final fmPhone = (fm['phone'] ?? fm['mobile'] ?? '').toString().toLowerCase();
+        final fmRel = (fm['relationship'] ?? '').toString().toLowerCase();
+
+        return fmName.contains(query) ||
+            fmEmail.contains(query) ||
+            fmPhone.contains(query) ||
+            fmRel.contains(query);
+      });
+
+      return matchesFamilyMember;
     }).toList();
   }
 
@@ -99,19 +205,27 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
     int totalSolo = 0;
 
     for (var p in _participants) {
-      final role = p['role']?.toString().toLowerCase();
-      if (role == 'familyleader' || role == 'family_leader') {
+      final role = p['role']?.toString().toLowerCase() ?? '';
+      final type = p['type']?.toString().toLowerCase() ?? '';
+      final group = p['group']?.toString().toLowerCase() ?? '';
+      final fm = p['familyMembers'] as List<dynamic>? ?? [];
+
+      final hasFamily = fm.isNotEmpty;
+      final isFamily = hasFamily &&
+          (type == 'family' ||
+              group.contains('family') ||
+              role == 'familyleader' ||
+              role == 'family_leader' ||
+              role == 'tripleader' ||
+              role == 'trip_leader');
+
+      if (isFamily) {
         uniqueFamilies++;
-        totalMembers++; // Family leader
-        final fm = p['familyMembers'] as List<dynamic>?;
-        if (fm != null) {
-          totalMembers += fm.length; // Family members
-        }
-      } else if (role == 'solotraveler' || role == 'solo_traveler') {
+        totalMembers += 1 + fm.length; // Leader + family members
+      } else {
+        // Individual / Solo traveler (includes soloTraveler, or tripLeader/familyLeader traveling without family)
         totalSolo++;
         totalMembers++;
-      } else {
-        totalMembers++; // Other individual members
       }
     }
 
@@ -192,6 +306,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                           widget.tripData,
                                           defaultText: 'May 20 – May 27, 2025 • 8 Members',
                                           showMembers: true,
+                                          customMembersCount: totalMembers,
                                         ),
                                         style: const TextStyle(
                                           fontSize: 11,
@@ -210,13 +325,16 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  if (!widget.isSoloTraveler)
+                  const SizedBox(width: 8),
+
+                  // 1. Join Request Approval Button (Only for Trip Leader)
+                  if (_isTripLeader)
                     Stack(
                       clipBehavior: Clip.none,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.primary),
+                          icon: const Icon(Icons.how_to_reg_outlined, color: AppColors.primary),
+                          tooltip: 'Review Join Requests',
                           onPressed: () async {
                             final acceptedUser = await Navigator.push(
                               context,
@@ -227,7 +345,6 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                             if (acceptedUser != null && acceptedUser is Map<String, dynamic>) {
                               _fetchParticipants();
                             } else {
-                              // Fetch again anyway in case they accepted/rejected but it didn't return the exact user object
                               _fetchParticipants();
                             }
                           },
@@ -259,6 +376,30 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                             ),
                           ),
                       ],
+                    ),
+
+                  // 2. Add / Update Family Members Button
+                  if (_canManageFamily)
+                    IconButton(
+                      icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.primary),
+                      tooltip: 'Family Details',
+                      onPressed: () async {
+                        final updated = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ManageFamilyScreen(
+                              tripData: {
+                                ...?widget.tripData,
+                                'tripType': _fetchedTripType ?? widget.tripData?['tripType'],
+                                'businessTripType': _fetchedBusinessTripType ?? widget.tripData?['businessTripType'],
+                              },
+                            ),
+                          ),
+                        );
+                        if (updated == true) {
+                          _fetchParticipants();
+                        }
+                      },
                     ),
                   // Profile Picture
                   GestureDetector(
@@ -452,17 +593,29 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                         ],
                       ),
                       child: TextField(
+                        controller: _searchController,
                         onChanged: (val) {
                           setState(() {
                             _searchQuery = val;
                           });
                         },
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: 'Search members or families...',
-                          hintStyle: TextStyle(color: AppColors.textLight, fontSize: 14),
-                          prefixIcon: Icon(Icons.search, color: AppColors.primary, size: 20),
+                          hintStyle: const TextStyle(color: AppColors.textLight, fontSize: 14),
+                          prefixIcon: const Icon(Icons.search, color: AppColors.primary, size: 20),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18, color: AppColors.textLight),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _searchQuery = '';
+                                    });
+                                  },
+                                )
+                              : null,
                           border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                         ),
                       ),
                     ),
@@ -490,9 +643,9 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                         : Column(
                             children: filtered.map((member) {
                               final isLeader = member['role'] == 'tripLeader' || member['role'] == 'Trip Leader';
-                              final isFamilyLeader = member['role'] == 'familyLeader';
                               final familyMembers = member['familyMembers'] as List<dynamic>? ?? [];
                               final hasFamilyMembers = familyMembers.isNotEmpty;
+                              final isFamilyLeader = (member['role'] == 'familyLeader' || member['role'] == 'Family Leader') && hasFamilyMembers;
 
                               Widget titleWidget = Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,8 +712,8 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                               );
                               
                               final groupText = member['group'] != null && member['group'].toString().isNotEmpty && member['group'] != 'null'
-                                  ? member['group']
-                                  : (member['type'] == 'Family' ? 'Family' : 'Individual');
+                                  ? (hasFamilyMembers ? member['group'] : (isLeader ? 'Individual' : 'Solo Traveler'))
+                                  : (hasFamilyMembers ? 'Family Group' : (isLeader ? 'Individual' : 'Solo Traveler'));
                               final contactText = member['phone'] ?? member['mobile'] ?? member['email'] ?? 'No contact info';
 
                               Widget subtitleWidget = Text(
@@ -656,13 +809,29 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                       const SizedBox(height: 12),
                                       Column(
                                         children: familyMembers.map((fm) {
+                                          final fmName = (fm['name'] ?? '').toString();
+                                          final fmEmail = (fm['email'] ?? '').toString();
+                                          final fmPhone = (fm['phone'] ?? fm['mobile'] ?? '').toString();
+                                          final fmRel = (fm['relationship'] ?? 'Family').toString();
+
+                                          final q = _searchQuery.trim().toLowerCase();
+                                          final isMatched = q.isNotEmpty && (
+                                            fmName.toLowerCase().contains(q) ||
+                                            fmEmail.toLowerCase().contains(q) ||
+                                            fmPhone.toLowerCase().contains(q) ||
+                                            fmRel.toLowerCase().contains(q)
+                                          );
+
                                           return Container(
                                             margin: const EdgeInsets.only(bottom: 6),
                                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                             decoration: BoxDecoration(
-                                              color: Colors.white,
+                                              color: isMatched ? const Color(0xFFF0FDF4) : Colors.white,
                                               borderRadius: BorderRadius.circular(12),
-                                              border: Border.all(color: const Color(0xFFBBF7D0)),
+                                              border: Border.all(
+                                                color: isMatched ? const Color(0xFF16A34A) : const Color(0xFFBBF7D0),
+                                                width: isMatched ? 1.5 : 1.0,
+                                              ),
                                             ),
                                             child: Row(
                                               children: [
@@ -674,10 +843,14 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                                       : null,
                                                   child: (fm['avatar'] == null || fm['avatar'].toString().isEmpty)
                                                       ? Text(
-                                                          (fm['name'] != null && fm['name'].toString().isNotEmpty) 
-                                                              ? fm['name'].toString()[0].toUpperCase() 
+                                                          fmName.isNotEmpty 
+                                                              ? fmName[0].toUpperCase() 
                                                               : 'U',
-                                                          style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.bold),
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: isMatched ? const Color(0xFF16A34A) : AppColors.primary,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
                                                         )
                                                       : null,
                                                 ),
@@ -690,21 +863,35 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                                         children: [
                                                           Expanded(
                                                             child: Text(
-                                                              fm['name'] ?? 'Unknown',
-                                                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                                                              fmName.isNotEmpty ? fmName : 'Unknown',
+                                                              style: TextStyle(
+                                                                fontSize: 13,
+                                                                fontWeight: isMatched ? FontWeight.bold : FontWeight.w600,
+                                                                color: isMatched ? const Color(0xFF15803D) : const Color(0xFF334155),
+                                                              ),
                                                               overflow: TextOverflow.ellipsis,
                                                             ),
                                                           ),
                                                           Container(
                                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                            decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(6)),
-                                                            child: const Text('Member', style: TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.bold)),
+                                                            decoration: BoxDecoration(
+                                                              color: isMatched ? const Color(0xFFDCFCE7) : const Color(0xFFEFF6FF),
+                                                              borderRadius: BorderRadius.circular(6),
+                                                            ),
+                                                            child: Text(
+                                                              isMatched ? 'Matched' : 'Member',
+                                                              style: TextStyle(
+                                                                fontSize: 10,
+                                                                color: isMatched ? const Color(0xFF16A34A) : AppColors.primary,
+                                                                fontWeight: FontWeight.bold,
+                                                              ),
+                                                            ),
                                                           ),
                                                         ],
                                                       ),
                                                       const SizedBox(height: 2),
                                                       Text(
-                                                        '${fm['relationship'] ?? 'Family'} • ${fm['phone'] ?? fm['mobile'] ?? fm['email'] ?? 'No contact info'}',
+                                                        '$fmRel • ${fmPhone.isNotEmpty ? fmPhone : (fmEmail.isNotEmpty ? fmEmail : 'No contact info')}',
                                                         style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                                                       ),
                                                     ],
@@ -757,13 +944,4 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
       ),
     );
   }
-}
-
-String _getInitials(String? name) {
-  if (name == null || name.trim().isEmpty) return '';
-  final parts = name.trim().split(RegExp(r'\s+'));
-  if (parts.length > 1) {
-    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-  }
-  return parts[0][0].toUpperCase();
 }

@@ -123,6 +123,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'role': trip['participantRole'] ?? 'Member',
             'originalRole': trip['participantRole'] ?? 'Member',
             'membersCount': trip['membersCount'] ?? 1,
+            'tripType': trip['tripType'],
+            'businessTripType': trip['businessTripType'],
           });
 
           if (status == 'Upcoming' || status == 'Ongoing') {
@@ -146,6 +148,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'members': const [],
               'extraMembers': '',
               'membersCount': trip['membersCount'] ?? 1,
+              'tripType': trip['tripType'],
+              'businessTripType': trip['businessTripType'],
             });
           }
         }

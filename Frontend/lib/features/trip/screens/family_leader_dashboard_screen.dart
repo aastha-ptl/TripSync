@@ -130,7 +130,7 @@ class _FamilyLeaderDashboardScreenState extends State<FamilyLeaderDashboardScree
           tripData: widget.tripData,
           profilePhotoUrl: widget.profilePhotoUrl,
           profileName: widget.profileName,
-          isSoloTraveler: true,
+          userRole: 'familyLeader',
           onBack: () {
             setState(() {
               _selectedNavIndex = 0;

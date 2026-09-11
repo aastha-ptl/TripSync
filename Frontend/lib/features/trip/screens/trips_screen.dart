@@ -116,6 +116,8 @@ class _TripsScreenState extends State<TripsScreen> {
               'role': roleStr,
               'originalRole': trip['participantRole'] ?? 'Member',
               'membersCount': trip['membersCount'] ?? 1,
+              'tripType': trip['tripType'],
+              'businessTripType': trip['businessTripType'],
               'inviteToken': trip['invitationCode']?.toString() ?? trip['inviteToken']?.toString() ?? 'No Code Available',
             };
           }).toList();

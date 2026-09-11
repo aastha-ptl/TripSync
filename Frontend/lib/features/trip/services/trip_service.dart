@@ -280,4 +280,79 @@ class TripService {
       return {'success': false, 'message': 'Connection error: ${e.toString()}'};
     }
   }
+
+  Future<Map<String, dynamic>> getMyFamily(String tripId) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('$baseUrl/trips/$tripId/family/my-family');
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> saveFamilyMembers(
+    String tripId,
+    List<Map<String, dynamic>> familyMembers,
+  ) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('$baseUrl/trips/$tripId/family/members');
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'members': familyMembers,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> checkFamilyMemberEmail(
+    String tripId,
+    String email,
+  ) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('$baseUrl/trips/$tripId/family/check-email?email=${Uri.encodeComponent(email)}');
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
 }

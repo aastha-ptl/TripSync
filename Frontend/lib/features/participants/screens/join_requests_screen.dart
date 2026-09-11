@@ -156,107 +156,7 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
     }
   }
 
-  void _showAddMemberDialog() {
-    final nameController = TextEditingController();
-    String selectedType = 'Solo';
-    String selectedGroup = 'Solo Traveler';
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              title: const Text('Add Trip Member Manually', style: TextStyle(fontWeight: FontWeight.bold)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Full Name',
-                      hintText: 'Enter name',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: selectedType,
-                    decoration: const InputDecoration(
-                      labelText: 'Traveler Type',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'Solo', child: Text('Solo Traveler')),
-                      DropdownMenuItem(value: 'Family', child: Text('Family Member')),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) {
-                        setDialogState(() {
-                          selectedType = val;
-                          if (val == 'Solo') {
-                            selectedGroup = 'Solo Traveler';
-                          } else {
-                            selectedGroup = 'Patel Family';
-                          }
-                        });
-                      }
-                    },
-                  ),
-                  if (selectedType == 'Family') ...[
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: selectedGroup,
-                      decoration: const InputDecoration(
-                        labelText: 'Select Family Group',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'Patel Family', child: Text('Patel Family')),
-                        DropdownMenuItem(value: 'Mehta Family', child: Text('Mehta Family')),
-                      ],
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(() {
-                            selectedGroup = val;
-                          });
-                        }
-                      },
-                    ),
-                  ],
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (nameController.text.isNotEmpty) {
-                      final newUser = {
-                        'name': nameController.text.trim(),
-                        'role': 'Member',
-                        'type': selectedType,
-                        'group': selectedGroup,
-                        'avatar': 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-                        'phone': '+91 99900 11223',
-                      };
-                      Navigator.pop(context); // Pop dialog
-                      Navigator.pop(context, newUser); // Pop screen and return new member
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-                  child: const Text('Add', style: TextStyle(color: Colors.white)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
+ 
 
   Widget _buildConfirmationDialog({
     required String title,
@@ -871,23 +771,6 @@ class _JoinRequestsScreenState extends State<JoinRequestsScreen> {
                 );
             },
           ),
-      floatingActionButton: Container(
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            colors: [Color(0xFF00C6FF), Color(0xFF0072FF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: FloatingActionButton(
-          onPressed: _showAddMemberDialog,
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          highlightElevation: 0,
-          child: const Icon(Icons.add, color: Colors.white),
-        ),
-      ),
     );
   }
 }

@@ -71,6 +71,8 @@ class AppRouter {
           documents: args?['documents'],
           tripData: args?['tripData'],
           isFamilyLeader: args?['isFamilyLeader'] ?? false,
+          ownerId: args?['ownerId'],
+          ownerName: args?['ownerName'],
         ));
       case AppRoutes.membersList:
         return _slideRoute(const MembersListScreen());

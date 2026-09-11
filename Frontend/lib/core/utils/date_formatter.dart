@@ -21,6 +21,7 @@ class TripInfoHelper {
     bool showMembers = false,
     bool showCities = false,
     bool showDuration = false,
+    int? customMembersCount,
   }) {
     if (tripData == null || tripData['startDate'] == null || tripData['endDate'] == null) {
       return defaultText ?? 'Unknown Dates';
@@ -47,7 +48,7 @@ class TripInfoHelper {
       List<String> parts = [dateStr];
       
       if (showMembers) {
-        final membersCount = tripData['membersCount'] ?? tripData['participantsCount'] ?? 1;
+        final membersCount = customMembersCount ?? tripData['membersCount'] ?? tripData['participantsCount'] ?? 1;
         parts.add('$membersCount Member${membersCount > 1 ? 's' : ''}');
       }
       if (showCities) {

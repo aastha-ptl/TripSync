@@ -130,7 +130,7 @@ class _SoloTravelerDashboardScreenState extends State<SoloTravelerDashboardScree
           tripData: widget.tripData,
           profilePhotoUrl: widget.profilePhotoUrl,
           profileName: widget.profileName,
-          isSoloTraveler: true,
+          userRole: 'soloTraveler',
           onBack: () {
             setState(() {
               _selectedNavIndex = 0;

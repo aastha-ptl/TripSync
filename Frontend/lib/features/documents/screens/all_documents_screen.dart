@@ -8,7 +8,6 @@ import '../../../core/constants/api_endpoints.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
 import '../../trip/services/trip_service.dart';
-import '../../auth/services/auth_service.dart';
 import '../../profile/services/user_service.dart';
 
 class AllDocumentsScreen extends StatefulWidget {
@@ -34,7 +33,6 @@ class AllDocumentsScreen extends StatefulWidget {
 }
 
 class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
-  String _selectedCategory = 'All';
   String _searchQuery = '';
   List<dynamic> _allDocs = [];
   bool _isUploading = false;
@@ -42,6 +40,34 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
   
   bool _isLoadingParticipants = false;
   List<Map<String, dynamic>> _participants = [];
+
+  bool get _isTripLeaderOrCreator {
+    final role = widget.tripData?['role']?.toString().toLowerCase();
+    final origRole = widget.tripData?['originalRole']?.toString().toLowerCase();
+    return role == 'trip leader' || origRole == 'creator' || origRole == 'tripleader' || origRole == 'admin';
+  }
+
+  bool get _canUpload {
+    if (widget.tripData == null) return false;
+    final titleLower = widget.title?.toLowerCase() ?? '';
+    final isGrouped = titleLower == 'member documents' || 
+                      titleLower == 'family member documents' || 
+                      titleLower == 'my family documents';
+    if (isGrouped) return false;
+
+    // Remove + icon when viewing any member's documents
+    if (widget.ownerName != null || widget.ownerId != null || titleLower.contains('\'s documents')) {
+      return false;
+    }
+
+    // For Trip Documents, only trip leader or creator can upload
+    if (titleLower == 'trip documents') {
+      return _isTripLeaderOrCreator;
+    }
+
+    // Personal documents ("My Documents"): can upload
+    return true;
+  }
 
   @override
   void initState() {
@@ -51,30 +77,133 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
         : [];
         
     final titleLower = widget.title?.toLowerCase() ?? '';
-    final isGroupedView = titleLower == 'member documents' || titleLower == 'family member documents';
+    final isGroupedView = titleLower == 'member documents' || 
+                          titleLower == 'family member documents' || 
+                          titleLower == 'my family documents';
     if (isGroupedView) {
       _fetchParticipants();
+    } else {
+      _fetchDocuments();
     }
   }
 
   Future<void> _fetchParticipants() async {
-    if (widget.tripData == null || widget.tripData!['_id'] == null) return;
+    final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
+    if (tripId == null) return;
     setState(() => _isLoadingParticipants = true);
     try {
       final tripService = TripService();
       final userService = UserService();
       
       final profileRes = await userService.getProfile();
-      final currentUserId = profileRes['success'] == true ? profileRes['data']['_id'] : null;
+      final currentUserId = profileRes['success'] == true ? profileRes['data']['_id']?.toString() : null;
+      final currentProfilePhoto = profileRes['success'] == true ? profileRes['data']['profilePhoto']?.toString() : null;
 
-      final response = await tripService.getTripParticipants(widget.tripData!['_id']);
+      final titleLower = widget.title?.toLowerCase() ?? '';
+      final isMyFamilyDocs = titleLower == 'my family documents';
+
+      if (isMyFamilyDocs) {
+        // Person with Family: Show "You" folder first, then family members
+        List<Map<String, dynamic>> list = [];
+        list.add({
+          'name': 'You',
+          'userId': currentUserId,
+          'id': currentUserId,
+          'avatar': currentProfilePhoto ?? '',
+          'isYou': true,
+        });
+
+        // 1. Fetch from getMyFamily
+        final famRes = await tripService.getMyFamily(tripId);
+        if (famRes['success'] == true && famRes['data'] != null) {
+          final fam = famRes['data']['family'];
+          if (fam != null && fam['members'] is List) {
+            for (var fm in fam['members']) {
+              if (fm is Map) {
+                list.add({
+                  'name': fm['name'] ?? 'Family Member',
+                  'userId': fm['userId'] ?? fm['_id'] ?? fm['id'],
+                  'id': fm['_id'] ?? fm['id'],
+                  'avatar': fm['avatar'] ?? fm['profilePhoto'] ?? '',
+                  'relationship': fm['relationship'] ?? '',
+                  'isYou': false,
+                });
+              }
+            }
+          }
+        }
+
+        // 2. Fallback check from getTripParticipants if no members were added yet
+        if (list.length == 1) {
+          final response = await tripService.getTripParticipants(tripId);
+          if (response['success'] == true && response['data'] is List) {
+            final List<Map<String, dynamic>> allParticipants = List<Map<String, dynamic>>.from(response['data']);
+            final myP = allParticipants.firstWhere(
+              (p) => p['userId']?.toString() == currentUserId || p['id']?.toString() == currentUserId,
+              orElse: () => <String, dynamic>{},
+            );
+            if (myP.isNotEmpty && myP['familyMembers'] is List) {
+              for (var fm in myP['familyMembers']) {
+                if (fm is Map) {
+                  list.add({
+                    'name': fm['name'] ?? 'Family Member',
+                    'userId': fm['userId'] ?? fm['_id'] ?? fm['id'],
+                    'id': fm['_id'] ?? fm['id'],
+                    'avatar': fm['avatar'] ?? fm['profilePhoto'] ?? '',
+                    'relationship': fm['relationship'] ?? '',
+                    'isYou': false,
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _participants = list;
+          });
+        }
+        await _fetchDocuments();
+        return;
+      }
+
+      final response = await tripService.getTripParticipants(tripId);
       if (response['success'] == true && mounted) {
         final List<Map<String, dynamic>> allParticipants = List<Map<String, dynamic>>.from(response['data']);
         List<Map<String, dynamic>> list = [];
         
-        if (widget.isFamilyLeader && currentUserId != null) {
+        // Trip Leader / Creator can see all trip members across all families and individuals
+        if (_isTripLeaderOrCreator) {
+          for (var p in allParticipants) {
+            final uId = p['userId']?.toString();
+            // Don't show leader himself in members folder view
+            if (uId != null && currentUserId != null && uId == currentUserId) continue;
+
+            if (p['type'] == 'Family') {
+              if (uId != null && (currentUserId == null || uId != currentUserId)) {
+                list.add({
+                  'name': p['name'],
+                  'userId': p['userId'],
+                  'id': p['id'] ?? p['_id'],
+                  'avatar': p['avatar'],
+                  'role': p['role'] ?? 'familyLeader',
+                });
+              }
+              if (p['familyMembers'] != null && p['familyMembers'] is List) {
+                for (var fm in p['familyMembers']) {
+                  if (fm is Map) {
+                    list.add(Map<String, dynamic>.from(fm));
+                  }
+                }
+              }
+            } else {
+              list.add(p);
+            }
+          }
+        } else if (widget.isFamilyLeader && currentUserId != null) {
           final myFamily = allParticipants.firstWhere(
-            (p) => p['type'] == 'Family' && p['userId'] == currentUserId,
+            (p) => p['type'] == 'Family' && p['userId']?.toString() == currentUserId,
             orElse: () => <String, dynamic>{},
           );
           if (myFamily.isNotEmpty && myFamily['familyMembers'] != null) {
@@ -82,8 +211,8 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
           }
         } else {
           for (var p in allParticipants) {
-            final user = p['userId'];
-            if (user != null && user == currentUserId) continue;
+            final user = p['userId']?.toString();
+            if (user != null && currentUserId != null && user == currentUserId) continue;
             list.add(p);
             if (p['familyMembers'] != null && p['familyMembers'] is List) {
               for (var fm in p['familyMembers']) {
@@ -98,6 +227,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
         setState(() {
           _participants = list;
         });
+        await _fetchDocuments();
       }
     } catch (e) {
       debugPrint('Error fetching participants: $e');
@@ -107,9 +237,10 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
   }
 
   Future<void> _fetchDocuments() async {
-    if (widget.tripData == null || widget.tripData!['_id'] == null) return;
+    final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
+    if (tripId == null) return;
     try {
-      final response = await _documentService.getTripDocuments(widget.tripData!['_id']);
+      final response = await _documentService.getTripDocuments(tripId);
       if (response['success'] == true && mounted) {
         final List<dynamic> allDocs = response['documents'];
         setState(() {
@@ -118,36 +249,53 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
             _allDocs = allDocs.where((d) => d['type'] == 'Trip').toList();
           } else if (titleLower == 'my documents') {
             _allDocs = allDocs.where((d) => (d['type'] == 'Personal' || d['type'] == null) && d['isMine'] == true).toList();
-          } else if (titleLower == 'family member documents' || titleLower == 'member documents') {
+          } else if (titleLower == 'my family documents') {
             _allDocs = allDocs.where((d) => 
               d['type'] == 'Family' || 
-              (d['type'] == 'Personal' && d['isMine'] == false)
+              ((d['type'] == 'Personal' || d['type'] == null) && d['isMine'] == true)
+            ).toList();
+          } else if (titleLower == 'family member documents' || titleLower == 'member documents') {
+            _allDocs = allDocs.where((d) => 
+              d['isMine'] != true &&
+              d['type'] != 'Trip' &&
+              (d['type'] == 'Family' || d['type'] == 'Personal')
             ).toList();
           } else {
              // For specific member folder
+             final ownerIdStr = widget.ownerId?.toString().trim();
+             final ownerNameStr = widget.ownerName?.toString().trim().toLowerCase();
+
              _allDocs = allDocs.where((d) {
+               // Leader's own documents and shared Trip documents must NEVER appear in another member's folder
+               if (d['isMine'] == true || d['type'] == 'Trip') {
+                 return false;
+               }
+
                bool matches = false;
-               if (widget.ownerId != null && d['belongsTo'] != null) {
-                 if (d['belongsTo'] is Map) {
-                   matches = d['belongsTo']['_id'] == widget.ownerId;
-                 } else {
-                   matches = d['belongsTo'] == widget.ownerId;
+               if (ownerIdStr != null && ownerIdStr.isNotEmpty) {
+                 final bId = d['belongsTo'] is Map ? d['belongsTo']['_id']?.toString() : d['belongsTo']?.toString();
+                 final uId = d['uploadedBy'] is Map ? d['uploadedBy']['_id']?.toString() : d['uploadedBy']?.toString();
+                 if (bId == ownerIdStr || uId == ownerIdStr) {
+                   matches = true;
                  }
                }
-               if (!matches && widget.ownerName != null) {
-                 if (d['memberName'] != null) {
-                   matches = d['memberName'] == widget.ownerName;
-                 } else if (d['belongsTo'] != null) {
-                   if (d['belongsTo'] is Map) {
-                     final fName = d['belongsTo']['firstName'] ?? '';
-                     final lName = d['belongsTo']['lastName'] ?? '';
-                     matches = '$fName $lName'.trim() == widget.ownerName;
-                   } else if (d['belongsTo'] is String) {
-                     matches = d['belongsTo'] == widget.ownerName;
-                   }
+               if (!matches && ownerNameStr != null && ownerNameStr.isNotEmpty) {
+                 final mName = d['memberName']?.toString().trim().toLowerCase();
+                 if (mName == ownerNameStr) {
+                   matches = true;
+                 } else if (d['belongsTo'] is Map) {
+                   final fName = d['belongsTo']['firstName']?.toString() ?? '';
+                   final lName = d['belongsTo']['lastName']?.toString() ?? '';
+                   final fullName = '$fName $lName'.trim().toLowerCase();
+                   if (fullName == ownerNameStr) matches = true;
+                 } else if (d['uploadedBy'] is Map) {
+                   final fName = d['uploadedBy']['firstName']?.toString() ?? '';
+                   final lName = d['uploadedBy']['lastName']?.toString() ?? '';
+                   final fullName = '$fName $lName'.trim().toLowerCase();
+                   if (fullName == ownerNameStr) matches = true;
                  }
                }
-               return matches || (d['type'] == 'Family' && d['memberName'] == widget.ownerName);
+               return matches || (d['type'] == 'Family' && d['memberName']?.toString().trim().toLowerCase() == ownerNameStr);
              }).toList();
           }
         });
@@ -225,19 +373,6 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
         );
       }
     }
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-          Text(value, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
-        ],
-      ),
-    );
   }
 
   void _showUploadDialog() {
@@ -532,10 +667,12 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
   Widget build(BuildContext context) {
     final filtered = _filteredDocs;
     final titleLower = widget.title?.toLowerCase() ?? '';
-    final isGroupedView = titleLower == 'member documents' || titleLower == 'family member documents';
+    final isGroupedView = titleLower == 'member documents' || 
+                          titleLower == 'family member documents' || 
+                          titleLower == 'my family documents';
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -578,7 +715,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
             ),
             const SizedBox(height: 2),
             Text(
-              '${_allDocs.length} items available',
+              '${isGroupedView ? _participants.length : filtered.length} items available',
               style: const TextStyle(
                 color: AppColors.textSecondary,
                 fontSize: 11,
@@ -589,52 +726,48 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
         ),
         centerTitle: true,
       ),
-      floatingActionButton: (widget.tripData != null && !isGroupedView) ? FloatingActionButton(
+      floatingActionButton: _canUpload ? FloatingActionButton(
         onPressed: _showUploadDialog,
-        backgroundColor: AppColors.primary,
-        child: const Icon(Icons.add, color: Colors.white),
+        backgroundColor: const Color(0xFF0072FF),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Icon(Icons.add, color: Colors.white, size: 28),
       ) : null,
       body: Column(
         children: [
-          // Search & Filter header
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Search field
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.02),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    onChanged: (val) {
-                      setState(() {
-                        _searchQuery = val;
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      hintText: 'Search documents...',
-                      hintStyle: TextStyle(color: AppColors.textLight, fontSize: 14),
-                      prefixIcon: Icon(Icons.search, color: AppColors.primary, size: 20),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          // Search header only shown on document views (Image 3)
+          if (!isGroupedView)
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     ),
+                  ],
+                ),
+                child: TextField(
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val;
+                    });
+                  },
+                  decoration: const InputDecoration(
+                    hintText: 'Search documents...',
+                    hintStyle: TextStyle(color: AppColors.textLight, fontSize: 14),
+                    prefixIcon: Icon(Icons.search, color: Color(0xFF0072FF), size: 20),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-          // Documents grid
-          // Documents grid
+          // Content view
           Expanded(
             child: Builder(
               builder: (context) {
@@ -666,6 +799,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                   Map<String, List<dynamic>> memberGroups = {};
                   Map<String, String> participantIds = {};
                   Map<String, String> participantAvatars = {};
+                  Map<String, bool> isYouMap = {};
 
                   // Initialize empty groups for all participants
                   for (var p in _participants) {
@@ -673,41 +807,61 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                     if (name.isEmpty) name = 'Unknown';
                     
                     memberGroups[name] = [];
-                    // For unregistered members, userId might be null or missing
-                    participantIds[name] = p['userId']?.toString() ?? '';
+                    participantIds[name] = p['userId']?.toString() ?? p['id']?.toString() ?? '';
                     participantAvatars[name] = p['avatar']?.toString() ?? '';
+                    isYouMap[name] = p['isYou'] == true || name == 'You';
                   }
 
                   // Distribute documents into these groups
                   for (var doc in filtered) {
+                    if (doc['isMine'] == true) {
+                      if (memberGroups.containsKey('You')) {
+                        memberGroups['You']!.add(doc);
+                      }
+                      // If there is no "You" folder (e.g. Member Documents view),
+                      // the leader's own documents must NEVER be placed in any member's folder!
+                      continue;
+                    }
+                    if (doc['type'] == 'Trip') {
+                      // Shared trip documents belong in Trip Documents, not in individual member folders
+                      continue;
+                    }
+
                     String owner = 'Unknown';
                     if (doc['memberName'] != null && doc['memberName'].toString().trim().isNotEmpty) {
-                      owner = doc['memberName'];
+                      owner = doc['memberName'].toString().trim();
                     } else if (doc['belongsTo'] != null) {
                       if (doc['belongsTo'] is Map) {
-                        final fName = doc['belongsTo']['firstName'] ?? '';
-                        final lName = doc['belongsTo']['lastName'] ?? '';
+                        final fName = doc['belongsTo']['firstName']?.toString() ?? '';
+                        final lName = doc['belongsTo']['lastName']?.toString() ?? '';
                         if (fName.isNotEmpty || lName.isNotEmpty) {
                           owner = '$fName $lName'.trim();
                         }
                       } else if (doc['belongsTo'] is String) {
                         owner = doc['belongsTo'];
                       }
+                    } else if (doc['uploadedBy'] != null && doc['uploadedBy'] is Map) {
+                      final fName = doc['uploadedBy']['firstName']?.toString() ?? '';
+                      final lName = doc['uploadedBy']['lastName']?.toString() ?? '';
+                      if (fName.isNotEmpty || lName.isNotEmpty) {
+                        owner = '$fName $lName'.trim();
+                      }
                     }
                     
-                    // Fallback to check if owner is an ID that matches a participant or doc fields match
+                    // Match against participants
                     for (var p in _participants) {
-                      final pName = p['name']?.toString() ?? '';
+                      final pName = p['name']?.toString().trim() ?? '';
                       final pUserId = p['userId']?.toString() ?? '';
-                      final pId = p['_id']?.toString() ?? p['id']?.toString() ?? '';
+                      final pId = (p['_id'] ?? p['id'])?.toString() ?? '';
                       final docBelongsTo = doc['belongsTo'] is Map ? (doc['belongsTo']['_id']?.toString() ?? '') : doc['belongsTo']?.toString() ?? '';
-                      final docMemberName = doc['memberName']?.toString() ?? '';
+                      final docUploadedBy = doc['uploadedBy'] is Map ? (doc['uploadedBy']['_id']?.toString() ?? '') : doc['uploadedBy']?.toString() ?? '';
+                      final docMemberName = doc['memberName']?.toString().trim() ?? '';
 
                       if (pName.isNotEmpty && (
                           owner == pName || 
-                          docMemberName == pName ||
-                          (pUserId.isNotEmpty && (owner == pUserId || docBelongsTo == pUserId)) ||
-                          (pId.isNotEmpty && (owner == pId || docBelongsTo == pId))
+                          docMemberName.toLowerCase() == pName.toLowerCase() ||
+                          (pUserId.isNotEmpty && (owner == pUserId || docBelongsTo == pUserId || docUploadedBy == pUserId)) ||
+                          (pId.isNotEmpty && (owner == pId || docBelongsTo == pId || docUploadedBy == pId))
                         )) {
                         owner = pName;
                         break;
@@ -716,6 +870,16 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
 
                     if (!memberGroups.containsKey(owner)) {
                       memberGroups[owner] = [];
+                      if (doc['belongsTo'] is Map && doc['belongsTo']['profilePhoto'] != null) {
+                        participantAvatars[owner] = doc['belongsTo']['profilePhoto'];
+                      } else if (doc['uploadedBy'] is Map && doc['uploadedBy']['profilePhoto'] != null) {
+                        participantAvatars[owner] = doc['uploadedBy']['profilePhoto'];
+                      }
+                      if (doc['belongsTo'] is Map && doc['belongsTo']['_id'] != null) {
+                        participantIds[owner] = doc['belongsTo']['_id'].toString();
+                      } else if (doc['uploadedBy'] is Map && doc['uploadedBy']['_id'] != null) {
+                        participantIds[owner] = doc['uploadedBy']['_id'].toString();
+                      }
                     }
                     memberGroups[owner]!.add(doc);
                   }
@@ -742,25 +906,31 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                     );
                   }
 
+                  // Folder Grid View (Image 2)
                   return GridView.builder(
                     padding: const EdgeInsets.all(16),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       mainAxisSpacing: 16,
                       crossAxisSpacing: 16,
-                      childAspectRatio: 1.0,
+                      childAspectRatio: 0.88,
                     ),
                     itemCount: owners.length,
                     itemBuilder: (context, index) {
                       final ownerName = owners[index];
-                      final ownerDocs = memberGroups[ownerName]!;
+                      final ownerDocs = memberGroups[ownerName] ?? [];
+                      final isThisYou = isYouMap[ownerName] == true || ownerName == 'You';
                       String groupAvatar = participantAvatars[ownerName] ?? '';
                       if (groupAvatar.isEmpty && ownerDocs.isNotEmpty && ownerDocs.first['belongsTo'] is Map) {
                         groupAvatar = ownerDocs.first['belongsTo']['profilePhoto'] ?? '';
+                      } else if (groupAvatar.isEmpty && ownerDocs.isNotEmpty && ownerDocs.first['uploadedBy'] is Map) {
+                        groupAvatar = ownerDocs.first['uploadedBy']['profilePhoto'] ?? '';
                       }
                       
                       String initials = '';
-                      if (ownerName.isNotEmpty && ownerName != 'Unknown') {
+                      if (isThisYou) {
+                        initials = 'You';
+                      } else if (ownerName.isNotEmpty && ownerName != 'Unknown') {
                         List<String> parts = ownerName.trim().split(RegExp(r'\s+'));
                         if (parts.length > 1) {
                           initials = '${parts[0][0]}${parts[1][0]}'.toUpperCase();
@@ -771,19 +941,31 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                         initials = '?';
                       }
 
+                      final colors = [
+                        const Color(0xFF0072FF),
+                        const Color(0xFF0066FF),
+                        const Color(0xFF4F46E5),
+                        const Color(0xFF7C3AED),
+                      ];
+                      final bgCol = isThisYou ? const Color(0xFF0072FF) : colors[index % colors.length];
+
                       Widget avatarWidget;
                       if (groupAvatar.isNotEmpty && !groupAvatar.contains('images.unsplash.com')) {
                         avatarWidget = CircleAvatar(
-                          radius: 28,
+                          radius: 36,
                           backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(groupAvatar)),
                         );
                       } else {
                         avatarWidget = CircleAvatar(
-                          radius: 28,
-                          backgroundColor: const Color(0xFF0072FF),
+                          radius: 36,
+                          backgroundColor: bgCol,
                           child: Text(
                             initials,
-                            style: const TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: isThisYou ? 16 : 22,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         );
                       }
@@ -794,21 +976,22 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                             context,
                             MaterialPageRoute(
                               builder: (context) => AllDocumentsScreen(
-                                title: '$ownerName\'s Documents',
+                                title: isThisYou ? 'My Documents' : '$ownerName\'s Documents',
                                 documents: ownerDocs,
                                 tripData: widget.tripData,
                                 isFamilyLeader: widget.isFamilyLeader,
                                 ownerId: participantIds[ownerName] != null && participantIds[ownerName]!.isNotEmpty ? participantIds[ownerName] : null,
-                                ownerName: ownerName,
+                                ownerName: isThisYou ? null : ownerName,
                               ),
                             ),
                           ).then((_) => _fetchDocuments());
                         },
                         child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withOpacity(0.03),
@@ -821,27 +1004,25 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               avatarWidget,
-                              const SizedBox(height: 12),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                child: Text(
-                                  ownerName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
+                              const SizedBox(height: 16),
+                              Text(
+                                ownerName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Color(0xFF0F172A),
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 6),
                               Text(
                                 '${ownerDocs.length} Documents',
                                 style: const TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 11,
+                                  color: Color(0xFF64748B),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
@@ -852,24 +1033,29 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                   );
                 }
 
-                // Normal Document Grid View
+                // Document Grid View (Image 3)
                 return GridView.builder(
                   padding: const EdgeInsets.all(16),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 1.15,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 1.12,
                   ),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final doc = filtered[index];
+                    final String format = doc['format']?.toString().toUpperCase() ?? 'PDF';
+                    final String size = doc['size']?.toString() ?? 'Unknown Size';
+                    final String date = doc['date']?.toString() ?? 'Recent';
+                    final String name = doc['name']?.toString() ?? 'Document';
+
                     return GestureDetector(
                       onTap: () => _openDocument(doc),
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: const Color(0xFFE2E8F0)),
                           boxShadow: [
                             BoxShadow(
@@ -879,7 +1065,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                             ),
                           ],
                         ),
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -890,70 +1076,54 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: doc['color'].withOpacity(0.1),
+                                    color: const Color(0xFFE0F2FE),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
-                                  child: Icon(doc['icon'], color: doc['color'], size: 18),
+                                  child: const Icon(Icons.description_outlined, color: Color(0xFF0284C7), size: 20),
                                 ),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFF1F5F9),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
-                                    doc['format'],
+                                    format,
                                     style: const TextStyle(
-                                      fontSize: 9,
+                                      fontSize: 10,
                                       fontWeight: FontWeight.bold,
-                                      color: AppColors.textSecondary,
+                                      color: Color(0xFF64748B),
                                     ),
                                   ),
                                 ),
                               ],
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  doc['name'],
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  doc['number'],
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                            Text(
+                              name,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  doc['size'],
-                                  style: const TextStyle(fontSize: 9, color: AppColors.textLight),
+                                  size,
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
                                 ),
                                 Text(
-                                  doc['date'],
-                                  style: const TextStyle(fontSize: 9, color: AppColors.textLight),
+                                  date,
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
                                 ),
                               ],
                             ),
                           ],
                         ),
                       ),
-                      
                     );
                   },
                 );

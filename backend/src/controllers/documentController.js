@@ -1,6 +1,7 @@
 import Document from '../models/Document.js';
 import TripParticipant from '../models/TripParticipant.js';
 import Family from '../models/Family.js';
+import Trip from '../models/Trip.js';
 import mongoose from 'mongoose';
 
 // @desc    Upload a document
@@ -25,8 +26,8 @@ export const uploadDocument = async (req, res) => {
       return res.status(403).json({ success: false, message: 'You are not a participant in this trip' });
     }
 
-    if (participant.role === 'familyMember') {
-      return res.status(403).json({ success: false, message: 'Family members cannot upload documents' });
+    if (participant.role === 'familyMember' && type && type !== 'Personal') {
+      return res.status(403).json({ success: false, message: 'Family members can only upload Personal documents' });
     }
 
     // Set file URL
@@ -86,17 +87,21 @@ export const getTripDocuments = async (req, res) => {
     const { tripId } = req.params;
     const userId = req.user._id;
 
-    // Verify user role
+    // Verify user role or creator
     const participant = await TripParticipant.findOne({ tripId, userId });
+    const trip = await Trip.findById(tripId);
     
-    if (!participant) {
+    if (!participant && (!trip || trip.createdBy?.toString() !== userId.toString())) {
       return res.status(403).json({ success: false, message: 'You are not a participant in this trip' });
     }
 
     let documents = [];
 
-    if (participant.role === 'tripLeader') {
-      // Trip leader can see all documents for this trip
+    const isTripCreatorOrLeader = (participant && (participant.role === 'tripLeader' || participant.role === 'creator' || participant.role === 'admin')) || 
+                                  (trip && trip.createdBy && trip.createdBy.toString() === userId.toString());
+
+    if (isTripCreatorOrLeader) {
+      // Trip leader or creator can see all documents for this trip
       documents = await Document.find({ tripId })
         .populate('belongsTo', 'firstName lastName email profilePhoto')
         .populate('uploadedBy', 'firstName lastName email profilePhoto');
@@ -159,7 +164,16 @@ export const getTripDocuments = async (req, res) => {
       if (docObj.belongsTo) {
         belongsToId = docObj.belongsTo._id ? docObj.belongsTo._id.toString() : docObj.belongsTo.toString();
       }
-      docObj.isMine = belongsToId === userId.toString() || (docObj.uploadedBy && docObj.uploadedBy._id ? docObj.uploadedBy._id.toString() === userId.toString() : docObj.uploadedBy.toString() === userId.toString());
+      let uploadedById = null;
+      if (docObj.uploadedBy) {
+        uploadedById = docObj.uploadedBy._id ? docObj.uploadedBy._id.toString() : docObj.uploadedBy.toString();
+      }
+      
+      const belongsToSelf = belongsToId && belongsToId === userId.toString();
+      const hasMemberName = docObj.memberName && docObj.memberName.trim().length > 0;
+
+      // It is only "isMine" if it belongs to this user and is not designated for another member
+      docObj.isMine = Boolean(belongsToSelf && !hasMemberName);
       return docObj;
     });
 

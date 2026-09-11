@@ -39,9 +39,11 @@ import participantRoutes from "./routes/participantRoutes.js";
 import itineraryRoutes from "./routes/itineraryRoutes.js";
 import expenseRoutes from "./routes/expenseRoutes.js";
 import photoRoutes from "./routes/photoRoutes.js";
+import familyRoutes from "./routes/familyRoutes.js";
 
 app.use("/api/auth", authRoutes);
 app.use("/api/trips", tripRoutes);
+app.use("/api/trips/:tripId/family", familyRoutes);
 app.use("/api/trips/:tripId", participantRoutes);
 app.use("/api/trips/:tripId/itinerary", itineraryRoutes);
 app.use("/api/trips/:tripId/expenses", expenseRoutes);

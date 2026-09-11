@@ -5,6 +5,7 @@ import User from "../models/User.js";
 import crypto from "crypto";
 import env from "../config/env.js";
 import { v2 as cloudinary } from "cloudinary";
+import { validateFamilyMemberEmail } from "./familyController.js";
 
 const deleteUploadedFile = async (file) => {
   if (file && file.filename) {
@@ -237,30 +238,28 @@ export const joinTrip = async (req, res) => {
     }
 
     if (familyMembers && familyMembers.length > 0) {
+      const seenEmails = new Set();
       for (const member of familyMembers) {
-        if (member.email && member.email.trim() !== "") {
-          const memberUser = await User.findOne({ email: member.email.trim() });
-          if (!memberUser) {
-            return res.status(400).json({ 
-              success: false, 
-              message: `Email ${member.email} is not registered in the system. Please remove the email or ask them to register.` 
-            });
-          }
-
-          // Check if this member has a clashing trip
-          const memberParticipants = await TripParticipant.find({ userId: memberUser._id, status: "approved" });
-          const memberTripIds = memberParticipants.map((p) => p.tripId);
-          
-          const memberClash = await Trip.findOne({
-            _id: { $in: memberTripIds },
-            startDate: { $lte: trip.endDate },
-            endDate: { $gte: trip.startDate },
-          });
-
-          if (memberClash) {
+        const emailTrimmed = member.email ? member.email.trim().toLowerCase() : null;
+        if (emailTrimmed && emailTrimmed.length > 0) {
+          if (seenEmails.has(emailTrimmed)) {
             return res.status(400).json({
               success: false,
-              message: `Family member ${member.name} (${member.email}) already has an approved trip clashing with these dates.`
+              message: `Email ${member.email} cannot be added more than once in the same family.`,
+            });
+          }
+          seenEmails.add(emailTrimmed);
+
+          const validation = await validateFamilyMemberEmail({
+            tripId: trip._id,
+            email: emailTrimmed,
+            currentUserId: req.user._id,
+          });
+
+          if (!validation.valid) {
+            return res.status(validation.status || 400).json({
+              success: false,
+              message: validation.message,
             });
           }
         }
