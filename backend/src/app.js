@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import path from "path";
 import env from "./config/env.js";
 
 const app = express();
@@ -14,6 +15,7 @@ app.use(
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads/documents', express.static(path.join(process.cwd(), 'uploads/documents')));
 
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -36,13 +38,17 @@ import userRoutes from "./routes/userRoutes.js";
 import participantRoutes from "./routes/participantRoutes.js";
 import itineraryRoutes from "./routes/itineraryRoutes.js";
 import expenseRoutes from "./routes/expenseRoutes.js";
+import photoRoutes from "./routes/photoRoutes.js";
 
 app.use("/api/auth", authRoutes);
 app.use("/api/trips", tripRoutes);
 app.use("/api/trips/:tripId", participantRoutes);
 app.use("/api/trips/:tripId/itinerary", itineraryRoutes);
 app.use("/api/trips/:tripId/expenses", expenseRoutes);
+app.use("/api/trips/:tripId/photos", photoRoutes);
 app.use("/api/users", userRoutes);
+import documentRoutes from "./routes/documentRoutes.js";
+app.use("/api/documents", documentRoutes);
 
 app.get("/join/:inviteToken", (req, res) => {
   const token = req.params.inviteToken;

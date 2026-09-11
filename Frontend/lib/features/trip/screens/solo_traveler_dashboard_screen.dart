@@ -6,6 +6,7 @@ import '../../expenses/screens/trip_expense_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
+import 'photo_gallery_screen.dart';
 import 'package:intl/intl.dart';
 import '../../itinerary/services/itinerary_service.dart';
 import '../../../core/utils/date_formatter.dart';
@@ -412,48 +413,78 @@ String _getTripDuration() {
 
 
   Widget _buildQuickActionGrid() {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _buildQuickActionCard(
-            color: const Color(0xFFE8F0FE),
-            iconColor: const Color(0xFF1E5AE6),
-            icon: Icons.calendar_month_outlined,
-            title: 'Itinerary',
-            subtitle: 'View your trip plan',
-            textColor: const Color(0xFF1E5AE6),
-            onTap: () {
-              Navigator.pushNamed(context, AppRoutes.itinerary, arguments: {'tripData': widget.tripData, 'isSoloTraveler': true});
-            },
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: _buildQuickActionCard(
+                color: const Color(0xFFE8F0FE),
+                iconColor: const Color(0xFF1E5AE6),
+                icon: Icons.calendar_month_outlined,
+                title: 'Itinerary',
+                subtitle: 'View your trip plan',
+                textColor: const Color(0xFF1E5AE6),
+                onTap: () {
+                  Navigator.pushNamed(context, AppRoutes.itinerary, arguments: {'tripData': widget.tripData, 'isSoloTraveler': true});
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildQuickActionCard(
+                color: const Color(0xFFF3E8FF),
+                iconColor: const Color(0xFF9333EA),
+                icon: Icons.chat_bubble_outline,
+                title: 'Tasks',
+                subtitle: 'Manage tasks',
+                textColor: const Color(0xFF9333EA),
+                onTap: () {
+                  Navigator.pushNamed(context, AppRoutes.tasks, arguments: {'tripData': widget.tripData});
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildQuickActionCard(
+                color: const Color(0xFFFFF2E6),
+                iconColor: const Color(0xFFEA580C),
+                icon: Icons.pie_chart_outline,
+                title: 'Trip Overview',
+                subtitle: 'Trip summary',
+                textColor: const Color(0xFFEA580C),
+                onTap: () {
+                  Navigator.pushNamed(context, AppRoutes.tripOverview, arguments: {'tripData': widget.tripData});
+                },
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildQuickActionCard(
-            color: const Color(0xFFF3E8FF),
-            iconColor: const Color(0xFF9333EA),
-            icon: Icons.chat_bubble_outline,
-            title: 'Tasks',
-            subtitle: 'Manage tasks',
-            textColor: const Color(0xFF9333EA),
-            onTap: () {
-              Navigator.pushNamed(context, AppRoutes.tasks, arguments: {'tripData': widget.tripData});
-            },
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildQuickActionCard(
-            color: const Color(0xFFFFF2E6),
-            iconColor: const Color(0xFFEA580C),
-            icon: Icons.pie_chart_outline,
-            title: 'Trip Overview',
-            subtitle: 'Trip summary',
-            textColor: const Color(0xFFEA580C),
-            onTap: () {
-              Navigator.pushNamed(context, AppRoutes.tripOverview, arguments: {'tripData': widget.tripData});
-            },
-          ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              flex: 1,
+              child: _buildQuickActionCard(
+                color: const Color(0xFFE6F4EA),
+                iconColor: const Color(0xFF137333),
+                icon: Icons.photo_library_outlined,
+                title: 'Photo Gallery',
+                subtitle: 'View photos',
+                textColor: const Color(0xFF137333),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PhotoGalleryScreen(tripData: widget.tripData!),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Expanded(flex: 2, child: SizedBox()), // Placeholder for alignment
+          ],
         ),
       ],
     );

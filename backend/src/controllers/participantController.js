@@ -15,31 +15,124 @@ export const getTripParticipants = async (req, res) => {
       return res.status(404).json({ success: false, message: "Trip not found" });
     }
 
-    const participants = await TripParticipant.find({ tripId, status: "approved", role: { $ne: "familyMember" } })
+    // Fetch all approved participants, including family members
+    const participants = await TripParticipant.find({ tripId, status: "approved" })
       .populate("userId", "firstName lastName profilePhoto phone")
       .lean();
 
-    const formattedParticipants = await Promise.all(participants.map(async (p) => {
-      const user = p.userId;
-      let familyMembers = [];
-      if (p.role === "familyLeader") {
-        const family = await Family.findOne({ tripId, familyLeaderId: user._id }).lean();
-        if (family) {
-          familyMembers = family.members || [];
+    // Group by familyId
+    const familiesMap = {};
+    const individuals = [];
+
+    for (const p of participants) {
+      if (p.familyId) {
+        const fId = p.familyId.toString();
+        if (!familiesMap[fId]) {
+          familiesMap[fId] = { leader: null, members: [] };
         }
+        if (p.role === "familyLeader" || p.role === "tripLeader") {
+          // If there are multiple leaders in a family somehow, just take the first
+          if (!familiesMap[fId].leader) {
+            familiesMap[fId].leader = p;
+          } else {
+            familiesMap[fId].members.push(p);
+          }
+        } else {
+          familiesMap[fId].members.push(p);
+        }
+      } else {
+        individuals.push(p);
       }
-      return {
+    }
+
+    const formattedParticipants = [];
+
+    // Format individuals
+    for (const p of individuals) {
+      const user = p.userId;
+      formattedParticipants.push({
         id: p._id,
+        userId: user ? user._id : null,
         name: user ? `${user.firstName} ${user.lastName}` : "Unknown User",
-        role: p.role, // e.g. "tripLeader", "soloTraveler", "familyMember", "familyLeader"
-        type: p.role === "soloTraveler" ? "Solo" : "Family",
-        group: p.role === "soloTraveler" ? "Solo Traveler" : "Family Group",
+        role: p.role,
+        type: p.role === "soloTraveler" ? "Solo" : "Individual",
+        group: p.role === "soloTraveler" ? "Solo Traveler" : "Individual",
         avatar: user?.profilePhoto || null,
         phone: user?.phone || "N/A",
-        familyMembers,
-      };
-    }));
+        familyMembers: [],
+      });
+    }
 
+    // Format families
+    for (const fId in familiesMap) {
+      const familyData = familiesMap[fId];
+      let leaderP = familyData.leader;
+      
+      // If no leader found in TripParticipants, fallback to first member
+      if (!leaderP && familyData.members.length > 0) {
+        leaderP = familyData.members.shift();
+      }
+
+      if (leaderP) {
+        const lUser = leaderP.userId;
+        
+        // Find the Family document to get unregistered members as well
+        const familyDoc = await Family.findById(fId).lean();
+        const unregisteredMembers = [];
+        
+        if (familyDoc && familyDoc.members) {
+          // Find members in familyDoc that are NOT in TripParticipants yet
+          // We can check by matching userId or just include them if they have no userId
+          for (const m of familyDoc.members) {
+            const isRegistered = familyData.members.some(
+              (regM) => regM.userId && m.userId && regM.userId._id.toString() === m.userId.toString()
+            );
+            if (!isRegistered) {
+              unregisteredMembers.push({
+                _id: m._id,
+                id: m._id,
+                userId: m.userId || null,
+                name: m.name,
+                relationship: m.relationship,
+                email: m.email,
+                phone: m.phone,
+                avatar: null,
+              });
+            }
+          }
+        }
+
+        const registeredMembers = familyData.members.map((m) => {
+          const mUser = m.userId;
+          return {
+            _id: m._id,
+            id: m._id,
+            userId: mUser ? mUser._id : null,
+            name: mUser ? `${mUser.firstName} ${mUser.lastName}` : "Unknown User",
+            relationship: "Family Member",
+            email: mUser?.email,
+            phone: mUser?.phone,
+            avatar: mUser?.profilePhoto || null,
+          };
+        });
+
+        const allFamilyMembers = [...registeredMembers, ...unregisteredMembers];
+
+        formattedParticipants.push({
+          id: leaderP._id,
+          userId: lUser ? lUser._id : null,
+          name: lUser ? `${lUser.firstName} ${lUser.lastName}` : "Unknown User",
+          role: leaderP.role,
+          type: "Family",
+          group: "Family Group",
+          avatar: lUser?.profilePhoto || null,
+          phone: lUser?.phone || "N/A",
+          familyMembers: allFamilyMembers,
+        });
+      }
+    }
+
+    // Sort participants (e.g. leaders first) or leave as is
     res.status(200).json({ success: true, data: formattedParticipants });
   } catch (error) {
     console.error("Error fetching participants:", error);

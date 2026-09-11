@@ -39,4 +39,7 @@ class ApiEndpoints {
 
   // Users
   static const String profile = '/users/profile';
+
+  // Documents
+  static const String documents = '/documents';
 }

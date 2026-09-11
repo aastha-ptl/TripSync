@@ -148,6 +148,35 @@ export const getUserTrips = async (req, res) => {
   }
 };
 
+export const getTripParticipants = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+
+    const isParticipant = await TripParticipant.findOne({ tripId, userId: req.user._id, status: "approved" });
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, message: "You are not a participant of this trip." });
+    }
+
+    const participants = await TripParticipant.find({ tripId, status: "approved" })
+      .populate("userId", "firstName lastName email profilePhoto")
+      .lean();
+
+    const formattedParticipants = participants.map(p => ({
+      ...p,
+      user: p.userId,
+      userId: p.userId?._id,
+      name: p.userId ? `${p.userId.firstName} ${p.userId.lastName}` : "Unknown",
+      email: p.userId?.email || "",
+      profilePhoto: p.userId?.profilePhoto
+    }));
+
+    res.status(200).json({ success: true, data: formattedParticipants });
+  } catch (error) {
+    console.error("Get trip participants error:", error);
+    res.status(500).json({ success: false, message: "Server error fetching participants." });
+  }
+};
+
 export const getInviteInfo = async (req, res) => {
   try {
     const { inviteToken } = req.params;

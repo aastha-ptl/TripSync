@@ -36,6 +36,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _participants = [];
   int _pendingRequestsCount = 0;
+  final Map<String, bool> _expandedFamilies = {};
 
   @override
   void initState() {
@@ -93,15 +94,26 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Calculations for analytics
-    final totalMembers = _participants.length;
-    // Families count: unique group names that are not 'Solo Traveler'
-    final uniqueFamilies = _participants
-        .where((p) => p['type'] == 'Family')
-        .map((p) => p['group'])
-        .toSet()
-        .length;
-    final totalSolo = _participants.where((p) => p['type'] == 'Solo').length;
+    int totalMembers = 0;
+    int uniqueFamilies = 0;
+    int totalSolo = 0;
+
+    for (var p in _participants) {
+      final role = p['role']?.toString().toLowerCase();
+      if (role == 'familyleader' || role == 'family_leader') {
+        uniqueFamilies++;
+        totalMembers++; // Family leader
+        final fm = p['familyMembers'] as List<dynamic>?;
+        if (fm != null) {
+          totalMembers += fm.length; // Family members
+        }
+      } else if (role == 'solotraveler' || role == 'solo_traveler') {
+        totalSolo++;
+        totalMembers++;
+      } else {
+        totalMembers++; // Other individual members
+      }
+    }
 
     final filtered = _filteredParticipants;
 
@@ -480,7 +492,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                               final isLeader = member['role'] == 'tripLeader' || member['role'] == 'Trip Leader';
                               final isFamilyLeader = member['role'] == 'familyLeader';
                               final familyMembers = member['familyMembers'] as List<dynamic>? ?? [];
-                              final hasFamilyMembers = isFamilyLeader && familyMembers.isNotEmpty;
+                              final hasFamilyMembers = familyMembers.isNotEmpty;
 
                               Widget titleWidget = Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -546,8 +558,13 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                 ),
                               );
                               
+                              final groupText = member['group'] != null && member['group'].toString().isNotEmpty && member['group'] != 'null'
+                                  ? member['group']
+                                  : (member['type'] == 'Family' ? 'Family' : 'Individual');
+                              final contactText = member['phone'] ?? member['mobile'] ?? member['email'] ?? 'No contact info';
+
                               Widget subtitleWidget = Text(
-                                '${member['group']} • ${member['phone'] ?? 'N/A'}',
+                                '$groupText • $contactText',
                                 style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
                               );
 
@@ -555,25 +572,41 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                 margin: const EdgeInsets.only(bottom: 12),
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: isFamilyLeader ? const Color(0xFFF4FBF7) : Colors.white,
                                   borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                  border: Border.all(
+                                    color: isFamilyLeader ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+                                    width: isFamilyLeader ? 1.5 : 1.0,
+                                  ),
                                 ),
                                 child: Column(
                                   children: [
-                                    if (hasFamilyMembers) ...[
+                                    if (isFamilyLeader) ...[
                                       Row(
                                         children: [
-                                          const Icon(Icons.family_restroom, color: AppColors.primary, size: 16),
+                                          Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFDCFCE7),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(Icons.family_restroom, color: Color(0xFF16A34A), size: 16),
+                                          ),
                                           const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              groupText != 'Family' && groupText != 'Individual' ? groupText : 'Family Group',
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
+                                            ),
+                                          ),
                                           Text(
-                                            '${familyMembers.length + 1} Members Family',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                                            '${familyMembers.length + 1} Members',
+                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Color(0xFF16A34A)),
                                           ),
                                         ],
                                       ),
                                       const SizedBox(height: 12),
-                                      const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                                      const Divider(height: 1, color: Color(0xFFBBF7D0)),
                                       const SizedBox(height: 12),
                                     ],
                                     Row(
@@ -627,9 +660,9 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                             margin: const EdgeInsets.only(bottom: 6),
                                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                             decoration: BoxDecoration(
-                                              color: const Color(0xFFF8FAFC),
+                                              color: Colors.white,
                                               borderRadius: BorderRadius.circular(12),
-                                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                                              border: Border.all(color: const Color(0xFFBBF7D0)),
                                             ),
                                             child: Row(
                                               children: [

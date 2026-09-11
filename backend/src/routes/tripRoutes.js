@@ -13,6 +13,7 @@ router.get("/all-pending-requests", protect, getAllPendingRequests);
 router.get("/invite/:inviteToken", getInviteInfo);
 router.post("/join", protect, joinTrip);
 router.put("/:tripId", protect, upload.single("coverImage"), updateTrip);
+
 router.delete("/:tripId", protect, deleteTrip);
 
 export default router;
