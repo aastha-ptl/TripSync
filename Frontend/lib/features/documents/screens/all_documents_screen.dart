@@ -117,7 +117,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
           if (titleLower == 'trip documents') {
             _allDocs = allDocs.where((d) => d['type'] == 'Trip').toList();
           } else if (titleLower == 'my documents') {
-            _allDocs = allDocs.where((d) => d['type'] == 'Personal' && d['isMine'] == true).toList();
+            _allDocs = allDocs.where((d) => (d['type'] == 'Personal' || d['type'] == null) && d['isMine'] == true).toList();
           } else if (titleLower == 'family member documents' || titleLower == 'member documents') {
             _allDocs = allDocs.where((d) => 
               d['type'] == 'Family' || 

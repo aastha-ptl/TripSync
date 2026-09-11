@@ -33,12 +33,16 @@ export const uploadDocument = async (req, res) => {
     // Ensure using forward slashes for URLs
     const fileUrl = '/' + req.file.path.replace(/\\/g, '/');
 
-    const documentType = type || 'Personal';
+    // Solo traveler and regular members can only upload Personal documents belonging to themselves
+    let documentType = type || 'Personal';
+    if (participant.role === 'soloTraveler' || participant.role === 'familyMember') {
+      documentType = 'Personal';
+    }
 
     let parsedBelongsTo = uploadedBy;
     let memberNameStr = null;
 
-    if (belongsTo) {
+    if (belongsTo && participant.role !== 'soloTraveler' && participant.role !== 'familyMember') {
       if (mongoose.Types.ObjectId.isValid(belongsTo)) {
         parsedBelongsTo = belongsTo;
       } else {
@@ -46,7 +50,7 @@ export const uploadDocument = async (req, res) => {
       }
     }
 
-    if (req.body.memberName) {
+    if (req.body.memberName && participant.role !== 'soloTraveler' && participant.role !== 'familyMember') {
       memberNameStr = req.body.memberName;
     }
 
@@ -92,11 +96,12 @@ export const getTripDocuments = async (req, res) => {
     let documents = [];
 
     if (participant.role === 'tripLeader') {
-      // Trip leader can see all documents
-      documents = await Document.find({ tripId }).populate('belongsTo', 'firstName lastName email profilePhoto').populate('uploadedBy', 'firstName lastName email profilePhoto');
+      // Trip leader can see all documents for this trip
+      documents = await Document.find({ tripId })
+        .populate('belongsTo', 'firstName lastName email profilePhoto')
+        .populate('uploadedBy', 'firstName lastName email profilePhoto');
     } else if (participant.role === 'familyLeader') {
-      // Family leader can see their own documents + their family members' documents
-      // Find the family where this user is the familyLeader
+      // Family leader can see their own documents + their family members' documents + trip docs
       const family = await Family.findOne({ tripId, familyLeaderId: userId });
       
       let allowedUserIds = [userId.toString()];
@@ -116,25 +121,45 @@ export const getTripDocuments = async (req, res) => {
         tripId, 
         $or: [
           { belongsTo: { $in: allowedUserIds } },
-          { uploadedBy: userId }
+          { uploadedBy: userId },
+          { type: 'Trip' }
         ]
-      }).populate('belongsTo', 'firstName lastName email profilePhoto').populate('uploadedBy', 'firstName lastName email profilePhoto');
+      })
+      .populate('belongsTo', 'firstName lastName email profilePhoto')
+      .populate('uploadedBy', 'firstName lastName email profilePhoto');
 
     } else if (participant.role === 'soloTraveler') {
-      // Solo traveler can only see their own documents
+      // Solo traveler can see their own personal documents for this trip + trip documents
       documents = await Document.find({ 
         tripId, 
-        belongsTo: userId 
-      }).populate('belongsTo', 'firstName lastName email profilePhoto').populate('uploadedBy', 'firstName lastName email profilePhoto');
+        $or: [
+          { belongsTo: userId },
+          { type: 'Trip' }
+        ]
+      })
+      .populate('belongsTo', 'firstName lastName email profilePhoto')
+      .populate('uploadedBy', 'firstName lastName email profilePhoto');
 
-    } else if (participant.role === 'familyMember') {
-      // Family member cannot see documents
-      return res.status(403).json({ success: false, message: 'Family members do not have access to view documents' });
+    } else {
+      // Regular members / familyMember can see their own personal documents for this trip + trip documents
+      documents = await Document.find({ 
+        tripId, 
+        $or: [
+          { belongsTo: userId },
+          { type: 'Trip' }
+        ]
+      })
+      .populate('belongsTo', 'firstName lastName email profilePhoto')
+      .populate('uploadedBy', 'firstName lastName email profilePhoto');
     }
 
     const docsWithIsMine = documents.map(doc => {
       const docObj = doc.toObject();
-      docObj.isMine = docObj.belongsTo && docObj.belongsTo._id.toString() === userId.toString();
+      let belongsToId = null;
+      if (docObj.belongsTo) {
+        belongsToId = docObj.belongsTo._id ? docObj.belongsTo._id.toString() : docObj.belongsTo.toString();
+      }
+      docObj.isMine = belongsToId === userId.toString() || (docObj.uploadedBy && docObj.uploadedBy._id ? docObj.uploadedBy._id.toString() === userId.toString() : docObj.uploadedBy.toString() === userId.toString());
       return docObj;
     });
 

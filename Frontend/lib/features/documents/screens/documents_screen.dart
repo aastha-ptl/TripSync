@@ -24,6 +24,7 @@ class DocumentsScreen extends StatefulWidget {
   final String? profileName;
   final bool isSoloTraveler;
   final bool isFamilyLeader;
+  final bool isTripLeader;
   final bool isPhotoGalleryOnly;
 
   const DocumentsScreen({
@@ -34,6 +35,7 @@ class DocumentsScreen extends StatefulWidget {
     this.profileName,
     this.isSoloTraveler = false,
     this.isFamilyLeader = false,
+    this.isTripLeader = false,
     this.isPhotoGalleryOnly = false,
   });
 
@@ -42,6 +44,16 @@ class DocumentsScreen extends StatefulWidget {
 }
 
 class _DocumentsScreenState extends State<DocumentsScreen> {
+  bool get _isLeader {
+    if (widget.isTripLeader || widget.isFamilyLeader) return true;
+    if (widget.tripData != null) {
+      final role = (widget.tripData!['originalRole'] ?? widget.tripData!['role'])?.toString().toLowerCase() ?? '';
+      if (role == 'admin' || role == 'creator' || role == 'tripleader' || role == 'familyleader') {
+        return true;
+      }
+    }
+    return false;
+  }
   String _selectedCategory = 'All';
   final List<String> _categories = ['All', 'Travel', 'Tickets', 'Bookings', 'Insurance', 'Visa', 'Other'];
 
@@ -121,7 +133,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         final List<dynamic> allDocs = response['documents'];
         if (mounted) {
           setState(() {
-            _myDocuments = allDocs.where((d) => d['type'] == 'Personal' && d['isMine'] == true).toList();
+            _myDocuments = allDocs.where((d) => (d['type'] == 'Personal' || d['type'] == null) && d['isMine'] == true).toList();
             _memberDocuments = allDocs.where((d) => 
               d['type'] == 'Family' || 
               (d['type'] == 'Personal' && d['isMine'] == false)
@@ -241,8 +253,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       const SizedBox(height: 24),
                       _buildMyDocumentsSection(),
                       const SizedBox(height: 24),
-                      if (!widget.isSoloTraveler) _buildMemberDocumentsSection(),
-                      if (!widget.isSoloTraveler) const SizedBox(height: 24),
+                      if (!widget.isSoloTraveler && _isLeader) _buildMemberDocumentsSection(),
+                      if (!widget.isSoloTraveler && _isLeader) const SizedBox(height: 24),
                       _buildTripDocumentsSection(),
                       const SizedBox(height: 24),
                       _buildUploadDocumentBox(),
@@ -1304,13 +1316,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     onChanged: (val) => number = val,
                   ),
                   const SizedBox(height: 16),
-                  if (widget.isFamilyLeader) ...[
+                  if (_isLeader && !widget.isSoloTraveler) ...[
                     DropdownButtonFormField<String>(
                       value: type,
                       decoration: const InputDecoration(labelText: 'Document Type', border: OutlineInputBorder()),
                       items: const [
-                        DropdownMenuItem(value: 'Personal', child: Text('Personal')),
-                        DropdownMenuItem(value: 'Family', child: Text('Family Member')),
+                        DropdownMenuItem(value: 'Personal', child: Text('My Personal Document')),
+                        DropdownMenuItem(value: 'Family', child: Text('Member Document')),
+                        DropdownMenuItem(value: 'Trip', child: Text('Shared Trip Document')),
                       ],
                       onChanged: (val) => setModalState(() => type = val!),
                     ),

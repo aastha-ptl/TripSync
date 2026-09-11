@@ -109,6 +109,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           tripData: widget.tripData,
           profilePhotoUrl: widget.profilePhotoUrl,
           profileName: widget.profileName,
+          isTripLeader: true,
           onBack: () {
             setState(() {
               _selectedNavIndex = 0;
