@@ -45,7 +45,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   final TripService _tripService = TripService();
   List<Photo> _recentPhotos = [];
   List<dynamic> _myDocuments = [];
-  List<dynamic> _memberDocuments = [];
+  List<dynamic> _allFetchedDocuments = [];
   List<dynamic> _tripDocuments = [];
   int _totalPhotos = 0;
   bool _isLoadingPhotos = true;
@@ -54,6 +54,52 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   String? _businessTripType;
   String? _userRole;
   bool _hasFamilyMembers = false;
+  List<String> _myFamilyMemberNames = [];
+  List<String> _myFamilyMemberIds = [];
+
+  bool _isNameMatch(String name1, String name2) {
+    final n1 = name1.trim().toLowerCase();
+    final n2 = name2.trim().toLowerCase();
+    if (n1.isEmpty || n2.isEmpty) return false;
+    if (n1 == n2) return true;
+    if (n1.contains(n2) || n2.contains(n1)) {
+      final words1 = n1.split(RegExp(r'\s+'));
+      final words2 = n2.split(RegExp(r'\s+'));
+      if (words1.isNotEmpty && words2.isNotEmpty && words1.first == words2.first) {
+        return true;
+      }
+      if (words1.contains(n2) || words2.contains(n1)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isMyFamilyDocument(Map<String, dynamic> d) {
+    if (d['isMine'] == true) return true;
+    final mName = (d['memberName']?.toString().trim() ?? '').toLowerCase();
+    final bId = (d['belongsTo'] is Map 
+        ? (d['belongsTo']['_id']?.toString() ?? '') 
+        : (d['belongsToId']?.toString() ?? d['belongsTo']?.toString() ?? '')).trim();
+
+    if (mName.isNotEmpty) {
+      for (var name in _myFamilyMemberNames) {
+        if (_isNameMatch(name, mName)) return true;
+      }
+    }
+    if (bId.isNotEmpty && _myFamilyMemberIds.contains(bId)) {
+      return true;
+    }
+    return false;
+  }
+
+  List<dynamic> get _myFamilyDocuments {
+    return _allFetchedDocuments.where((d) => d['type'] != 'Trip' && _isMyFamilyDocument(d)).toList();
+  }
+
+  List<dynamic> get _memberDocuments {
+    return _allFetchedDocuments.where((d) => d['type'] != 'Trip' && !_isMyFamilyDocument(d)).toList();
+  }
 
   bool get _isFamilyOrEmployeeWithFamily {
     final tType = _tripType ?? widget.tripData?['tripType']?.toString() ?? widget.tripData?['type']?.toString();
@@ -120,8 +166,23 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             ? data['family']['members']
             : [];
 
+        List<String> famNames = [];
+        List<String> famIds = [];
+        for (var m in members) {
+          if (m is Map) {
+            final name = m['name']?.toString().trim();
+            if (name != null && name.isNotEmpty) famNames.add(name.toLowerCase());
+            final uId = m['userId']?.toString().trim();
+            if (uId != null && uId.isNotEmpty) famIds.add(uId);
+            final mId = (m['_id'] ?? m['id'])?.toString().trim();
+            if (mId != null && mId.isNotEmpty) famIds.add(mId);
+          }
+        }
+
         setState(() {
           _hasFamilyMembers = hasFam && members.isNotEmpty;
+          _myFamilyMemberNames = famNames;
+          _myFamilyMemberIds = famIds;
           if (data['role'] != null) _userRole = data['role'].toString();
           if (data['tripType'] != null) _tripType = data['tripType'].toString();
           if (data['businessTripType'] != null) _businessTripType = data['businessTripType'].toString();
@@ -153,8 +214,24 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           if (myParticipant.isNotEmpty) {
             final fMembers = myParticipant['familyMembers'];
             if (fMembers is List && fMembers.isNotEmpty) {
+              List<String> famNames = List<String>.from(_myFamilyMemberNames);
+              List<String> famIds = List<String>.from(_myFamilyMemberIds);
+              for (var fm in fMembers) {
+                if (fm is Map) {
+                  final name = fm['name']?.toString().trim();
+                  if (name != null && name.isNotEmpty && !famNames.contains(name.toLowerCase())) {
+                    famNames.add(name.toLowerCase());
+                  }
+                  final uId = fm['userId']?.toString().trim();
+                  if (uId != null && uId.isNotEmpty && !famIds.contains(uId)) famIds.add(uId);
+                  final mId = (fm['_id'] ?? fm['id'])?.toString().trim();
+                  if (mId != null && mId.isNotEmpty && !famIds.contains(mId)) famIds.add(mId);
+                }
+              }
               setState(() {
                 _hasFamilyMembers = true;
+                _myFamilyMemberNames = famNames;
+                _myFamilyMemberIds = famIds;
               });
             } else if (myParticipant['type'] == 'Solo' || myParticipant['type'] == 'Individual') {
               setState(() {
@@ -178,12 +255,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         final List<dynamic> allDocs = response['documents'];
         if (mounted) {
           setState(() {
+            _allFetchedDocuments = allDocs;
             _myDocuments = allDocs.where((d) => (d['type'] == 'Personal' || d['type'] == null) && d['isMine'] == true).toList();
-            _memberDocuments = allDocs.where((d) => 
-              d['isMine'] != true && 
-              d['type'] != 'Trip' && 
-              (d['type'] == 'Family' || d['type'] == 'Personal')
-            ).toList();
             _tripDocuments = allDocs.where((d) => d['type'] == 'Trip').toList();
           });
         }
@@ -572,6 +645,22 @@ color: Color(0xFF0072FF),
     );
   }
 
+  bool get _isFamilyLeaderRole {
+    if (widget.isFamilyLeader) return true;
+    final role = widget.tripData?['role']?.toString().toLowerCase();
+    final origRole = widget.tripData?['originalRole']?.toString().toLowerCase();
+    if (role == 'family leader' || role == 'familyleader' || origRole == 'family leader' || origRole == 'familyleader') {
+      return true;
+    }
+    if (_userRole?.toLowerCase() == 'familyleader' || _userRole?.toLowerCase() == 'family leader') {
+      return true;
+    }
+    if (_isFamilyOrEmployeeWithFamily && _hasFamilyMembers) {
+      return true;
+    }
+    return false;
+  }
+
   String get _personalOrFamilyDocsTitle {
     if (_isFamilyOrEmployeeWithFamily && _hasFamilyMembers) {
       return 'My Family Documents';
@@ -594,9 +683,9 @@ color: Color(0xFF0072FF),
         MaterialPageRoute(
           builder: (context) => AllDocumentsScreen(
             title: 'My Family Documents',
-            documents: [..._myDocuments, ..._memberDocuments],
+            documents: _myFamilyDocuments,
             tripData: widget.tripData,
-            isFamilyLeader: widget.isFamilyLeader,
+            isFamilyLeader: _isFamilyLeaderRole,
           ),
         ),
       ).then((_) {
@@ -612,7 +701,7 @@ color: Color(0xFF0072FF),
             title: 'My Documents',
             documents: _myDocuments,
             tripData: widget.tripData,
-            isFamilyLeader: widget.isFamilyLeader,
+            isFamilyLeader: _isFamilyLeaderRole,
           ),
         ),
       ).then((_) {
@@ -650,7 +739,8 @@ color: Color(0xFF0072FF),
               title: 'Member Documents',
               documents: _memberDocuments,
               tripData: widget.tripData,
-              isFamilyLeader: widget.isFamilyLeader,
+              isFamilyLeader: false,
+              isFromMemberDocs: true,
             ),
           ),
         ).then((_) {
@@ -676,7 +766,7 @@ color: Color(0xFF0072FF),
               title: 'Trip Documents',
               documents: _tripDocuments,
               tripData: widget.tripData,
-              isFamilyLeader: widget.isFamilyLeader,
+              isFamilyLeader: _isFamilyLeaderRole,
             ),
           ),
         ).then((_) {

@@ -163,6 +163,9 @@ export const getTripDocuments = async (req, res) => {
       let belongsToId = null;
       if (docObj.belongsTo) {
         belongsToId = docObj.belongsTo._id ? docObj.belongsTo._id.toString() : docObj.belongsTo.toString();
+      } else if (doc._doc && doc._doc.belongsTo) {
+        belongsToId = doc._doc.belongsTo.toString();
+        docObj.belongsToId = belongsToId;
       }
       let uploadedById = null;
       if (docObj.uploadedBy) {

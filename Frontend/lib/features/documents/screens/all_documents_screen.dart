@@ -15,6 +15,7 @@ class AllDocumentsScreen extends StatefulWidget {
   final List<dynamic>? documents;
   final Map<String, dynamic>? tripData;
   final bool isFamilyLeader;
+  final bool isFromMemberDocs;
   final String? ownerId;
   final String? ownerName;
 
@@ -24,6 +25,7 @@ class AllDocumentsScreen extends StatefulWidget {
     this.documents,
     this.tripData,
     this.isFamilyLeader = false,
+    this.isFromMemberDocs = false,
     this.ownerId,
     this.ownerName,
   });
@@ -40,6 +42,8 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
   
   bool _isLoadingParticipants = false;
   List<Map<String, dynamic>> _participants = [];
+  Set<String> _myFamilyNames = {};
+  Set<String> _myFamilyIds = {};
 
   bool get _isTripLeaderOrCreator {
     final role = widget.tripData?['role']?.toString().toLowerCase();
@@ -47,7 +51,22 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
     return role == 'trip leader' || origRole == 'creator' || origRole == 'tripleader' || origRole == 'admin';
   }
 
+  bool get _isFamilyLeader {
+    if (widget.isFamilyLeader) return true;
+    final role = widget.tripData?['role']?.toString().toLowerCase();
+    final origRole = widget.tripData?['originalRole']?.toString().toLowerCase();
+    if (role == 'family leader' || role == 'familyleader' || origRole == 'family leader' || origRole == 'familyleader') {
+      return true;
+    }
+    final titleLower = widget.title?.toLowerCase() ?? '';
+    if (titleLower == 'my family documents') {
+      return true;
+    }
+    return false;
+  }
+
   bool get _canUpload {
+    if (widget.isFromMemberDocs) return false;
     if (widget.tripData == null) return false;
     final titleLower = widget.title?.toLowerCase() ?? '';
     final isGrouped = titleLower == 'member documents' || 
@@ -55,14 +74,16 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                       titleLower == 'my family documents';
     if (isGrouped) return false;
 
-    // Remove + icon when viewing any member's documents
-    if (widget.ownerName != null || widget.ownerId != null || titleLower.contains('\'s documents')) {
-      return false;
-    }
-
     // For Trip Documents, only trip leader or creator can upload
     if (titleLower == 'trip documents') {
       return _isTripLeaderOrCreator;
+    }
+
+    // When viewing any specific member's documents:
+    // Only Family Leader can upload for their family members inside "My Family Documents".
+    // When viewing from "Member Documents", upload is disabled (+ button removed).
+    if (widget.ownerName != null || widget.ownerId != null || titleLower.contains('\'s documents')) {
+      return widget.isFamilyLeader;
     }
 
     // Personal documents ("My Documents"): can upload
@@ -168,20 +189,72 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
         return;
       }
 
+      Set<String> myFamNames = {};
+      Set<String> myFamIds = {};
+      if (currentUserId != null) {
+        myFamIds.add(currentUserId);
+      }
+      try {
+        final famRes = await tripService.getMyFamily(tripId);
+        if (famRes['success'] == true && famRes['data'] != null) {
+          final fam = famRes['data']['family'];
+          if (fam != null && fam['members'] is List) {
+            for (var fm in fam['members']) {
+              if (fm is Map) {
+                final name = fm['name']?.toString().trim();
+                if (name != null && name.isNotEmpty) myFamNames.add(name.toLowerCase());
+                final mId = (fm['_id'] ?? fm['id'] ?? fm['userId'])?.toString().trim();
+                if (mId != null && mId.isNotEmpty) myFamIds.add(mId);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error getting my family info: $e');
+      }
+
       final response = await tripService.getTripParticipants(tripId);
       if (response['success'] == true && mounted) {
         final List<Map<String, dynamic>> allParticipants = List<Map<String, dynamic>>.from(response['data']);
+        
+        // Also extract from allParticipants if current user has a family entry there
+        for (var p in allParticipants) {
+          final uId = p['userId']?.toString();
+          if (uId != null && currentUserId != null && uId == currentUserId) {
+            if (p['familyMembers'] != null && p['familyMembers'] is List) {
+              for (var fm in p['familyMembers']) {
+                if (fm is Map) {
+                  final name = fm['name']?.toString().trim();
+                  if (name != null && name.isNotEmpty) myFamNames.add(name.toLowerCase());
+                  final mId = (fm['_id'] ?? fm['id'] ?? fm['userId'])?.toString().trim();
+                  if (mId != null && mId.isNotEmpty) myFamIds.add(mId);
+                }
+              }
+            }
+          }
+        }
+
+        setState(() {
+          _myFamilyNames = myFamNames;
+          _myFamilyIds = myFamIds;
+        });
+
         List<Map<String, dynamic>> list = [];
         
-        // Trip Leader / Creator can see all trip members across all families and individuals
+        // Trip Leader / Creator can see all OTHER trip members across other families and individuals.
+        // The Trip Leader and their own family members are excluded (they belong in "My Family Documents").
         if (_isTripLeaderOrCreator) {
           for (var p in allParticipants) {
             final uId = p['userId']?.toString();
-            // Don't show leader himself in members folder view
-            if (uId != null && currentUserId != null && uId == currentUserId) continue;
+            // Don't show leader himself or leader's family group in Member Documents
+            if (uId != null && currentUserId != null && uId == currentUserId) {
+              continue;
+            }
 
             if (p['type'] == 'Family') {
-              if (uId != null && (currentUserId == null || uId != currentUserId)) {
+              final pName = (p['name']?.toString().trim() ?? '').toLowerCase();
+              final pId = ((p['_id'] ?? p['id'])?.toString() ?? '').trim();
+              if (!myFamNames.contains(pName) && !myFamIds.contains(pId)) {
                 list.add({
                   'name': p['name'],
                   'userId': p['userId'],
@@ -193,12 +266,21 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
               if (p['familyMembers'] != null && p['familyMembers'] is List) {
                 for (var fm in p['familyMembers']) {
                   if (fm is Map) {
-                    list.add(Map<String, dynamic>.from(fm));
+                    final fmName = (fm['name']?.toString().trim() ?? '').toLowerCase();
+                    final fmId = ((fm['_id'] ?? fm['id'] ?? fm['userId'])?.toString() ?? '').trim();
+                    // Exclude if it's the leader's own family member
+                    if (!myFamNames.contains(fmName) && !myFamIds.contains(fmId)) {
+                      list.add(Map<String, dynamic>.from(fm));
+                    }
                   }
                 }
               }
             } else {
-              list.add(p);
+              final pName = (p['name']?.toString().trim() ?? '').toLowerCase();
+              final pId = ((p['_id'] ?? p['id'] ?? p['userId'])?.toString() ?? '').trim();
+              if (!myFamNames.contains(pName) && !myFamIds.contains(pId)) {
+                list.add(p);
+              }
             }
           }
         } else if (widget.isFamilyLeader && currentUserId != null) {
@@ -212,12 +294,22 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
         } else {
           for (var p in allParticipants) {
             final user = p['userId']?.toString();
-            if (user != null && currentUserId != null && user == currentUserId) continue;
+            if (user != null && currentUserId != null && user == currentUserId) {
+              continue;
+            }
+            final pName = (p['name']?.toString().trim() ?? '').toLowerCase();
+            final pId = ((p['_id'] ?? p['id'] ?? p['userId'])?.toString() ?? '').trim();
+            if (myFamNames.contains(pName) || myFamIds.contains(pId)) continue;
+
             list.add(p);
             if (p['familyMembers'] != null && p['familyMembers'] is List) {
               for (var fm in p['familyMembers']) {
                 if (fm is Map) {
-                  list.add(Map<String, dynamic>.from(fm));
+                  final fmName = (fm['name']?.toString().trim() ?? '').toLowerCase();
+                  final fmId = ((fm['_id'] ?? fm['id'] ?? fm['userId'])?.toString() ?? '').trim();
+                  if (!myFamNames.contains(fmName) && !myFamIds.contains(fmId)) {
+                    list.add(Map<String, dynamic>.from(fm));
+                  }
                 }
               }
             }
@@ -236,6 +328,24 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
     }
   }
 
+  bool _isNameMatch(String name1, String name2) {
+    final n1 = name1.trim().toLowerCase();
+    final n2 = name2.trim().toLowerCase();
+    if (n1.isEmpty || n2.isEmpty) return false;
+    if (n1 == n2) return true;
+    if (n1.contains(n2) || n2.contains(n1)) {
+      final words1 = n1.split(RegExp(r'\s+'));
+      final words2 = n2.split(RegExp(r'\s+'));
+      if (words1.isNotEmpty && words2.isNotEmpty && words1.first == words2.first) {
+        return true;
+      }
+      if (words1.contains(n2) || words2.contains(n1)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _fetchDocuments() async {
     final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
     if (tripId == null) return;
@@ -250,52 +360,96 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
           } else if (titleLower == 'my documents') {
             _allDocs = allDocs.where((d) => (d['type'] == 'Personal' || d['type'] == null) && d['isMine'] == true).toList();
           } else if (titleLower == 'my family documents') {
-            _allDocs = allDocs.where((d) => 
-              d['type'] == 'Family' || 
-              ((d['type'] == 'Personal' || d['type'] == null) && d['isMine'] == true)
-            ).toList();
+            final myFamilyNames = _participants.map((p) => (p['name']?.toString().trim() ?? '').toLowerCase()).where((n) => n.isNotEmpty && n != 'you').toSet();
+            final myFamilyIds = _participants.map((p) => (p['userId']?.toString() ?? p['id']?.toString() ?? '').trim()).where((id) => id.isNotEmpty).toSet();
+
+            _allDocs = allDocs.where((d) {
+              if (d['type'] == 'Trip') return false;
+
+              // 1. Leader's personal documents
+              if (d['isMine'] == true) return true;
+
+              final mName = (d['memberName']?.toString().trim() ?? '').toLowerCase();
+              final bId = (d['belongsTo'] is Map 
+                  ? (d['belongsTo']['_id']?.toString() ?? '') 
+                  : (d['belongsToId']?.toString() ?? d['belongsTo']?.toString() ?? '')).trim();
+
+              // 2. Check if memberName matches any of leader's family members
+              if (mName.isNotEmpty) {
+                for (var famName in myFamilyNames) {
+                  if (_isNameMatch(famName, mName)) {
+                    return true;
+                  }
+                }
+              }
+
+              // 3. Check if belongsTo matches any of leader's family member IDs
+              if (bId.isNotEmpty && myFamilyIds.contains(bId)) {
+                return true;
+              }
+
+              return false;
+            }).toList();
           } else if (titleLower == 'family member documents' || titleLower == 'member documents') {
-            _allDocs = allDocs.where((d) => 
-              d['isMine'] != true &&
-              d['type'] != 'Trip' &&
-              (d['type'] == 'Family' || d['type'] == 'Personal')
-            ).toList();
+            _allDocs = allDocs.where((d) {
+              if (d['isMine'] == true || d['type'] == 'Trip') return false;
+
+              final mName = (d['memberName']?.toString().trim() ?? '').toLowerCase();
+              final bId = (d['belongsTo'] is Map 
+                  ? (d['belongsTo']['_id']?.toString() ?? '') 
+                  : (d['belongsToId']?.toString() ?? d['belongsTo']?.toString() ?? '')).trim();
+
+              // Exclude leader's family members' documents from Member Documents
+              if (mName.isNotEmpty) {
+                for (var famName in _myFamilyNames) {
+                  if (_isNameMatch(famName, mName)) return false;
+                }
+              }
+              if (bId.isNotEmpty && _myFamilyIds.contains(bId)) {
+                return false;
+              }
+
+              return true;
+            }).toList();
           } else {
              // For specific member folder
-             final ownerIdStr = widget.ownerId?.toString().trim();
-             final ownerNameStr = widget.ownerName?.toString().trim().toLowerCase();
+             final ownerIdStr = widget.ownerId?.toString().trim() ?? '';
+             final ownerNameStr = (widget.ownerName?.toString().trim() ?? '').toLowerCase();
 
              _allDocs = allDocs.where((d) {
-               // Leader's own documents and shared Trip documents must NEVER appear in another member's folder
-               if (d['isMine'] == true || d['type'] == 'Trip') {
+               // Shared trip documents belong in Trip Documents, never in individual member folders
+               if (d['type'] == 'Trip') {
                  return false;
                }
 
-               bool matches = false;
-               if (ownerIdStr != null && ownerIdStr.isNotEmpty) {
-                 final bId = d['belongsTo'] is Map ? d['belongsTo']['_id']?.toString() : d['belongsTo']?.toString();
-                 final uId = d['uploadedBy'] is Map ? d['uploadedBy']['_id']?.toString() : d['uploadedBy']?.toString();
-                 if (bId == ownerIdStr || uId == ownerIdStr) {
-                   matches = true;
-                 }
+               final docMemberName = (d['memberName']?.toString().trim() ?? '').toLowerCase();
+               final docBelongsToId = (d['belongsTo'] is Map 
+                   ? (d['belongsTo']['_id']?.toString() ?? '') 
+                   : (d['belongsToId']?.toString() ?? d['belongsTo']?.toString() ?? '')).trim();
+
+               String docBelongsToName = '';
+               if (d['belongsTo'] is Map) {
+                 final fName = d['belongsTo']['firstName']?.toString().trim() ?? '';
+                 final lName = d['belongsTo']['lastName']?.toString().trim() ?? '';
+                 docBelongsToName = '$fName $lName'.trim().toLowerCase();
                }
-               if (!matches && ownerNameStr != null && ownerNameStr.isNotEmpty) {
-                 final mName = d['memberName']?.toString().trim().toLowerCase();
-                 if (mName == ownerNameStr) {
-                   matches = true;
-                 } else if (d['belongsTo'] is Map) {
-                   final fName = d['belongsTo']['firstName']?.toString() ?? '';
-                   final lName = d['belongsTo']['lastName']?.toString() ?? '';
-                   final fullName = '$fName $lName'.trim().toLowerCase();
-                   if (fullName == ownerNameStr) matches = true;
-                 } else if (d['uploadedBy'] is Map) {
-                   final fName = d['uploadedBy']['firstName']?.toString() ?? '';
-                   final lName = d['uploadedBy']['lastName']?.toString() ?? '';
-                   final fullName = '$fName $lName'.trim().toLowerCase();
-                   if (fullName == ownerNameStr) matches = true;
-                 }
+
+               // 1. Priority: Match by memberName if specified
+               if (docMemberName.isNotEmpty) {
+                 return _isNameMatch(docMemberName, ownerNameStr);
                }
-               return matches || (d['type'] == 'Family' && d['memberName']?.toString().trim().toLowerCase() == ownerNameStr);
+
+               // 2. Match by belongsTo ID (userId or member subdocument _id)
+               if (ownerIdStr.isNotEmpty && docBelongsToId.isNotEmpty && docBelongsToId == ownerIdStr) {
+                 return true;
+               }
+
+               // 3. Match by belongsTo person full name
+               if (ownerNameStr.isNotEmpty && docBelongsToName.isNotEmpty && _isNameMatch(docBelongsToName, ownerNameStr)) {
+                 return true;
+               }
+
+               return false;
              }).toList();
           }
         });
@@ -385,7 +539,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
     String documentType = 'Personal';
     if (widget.title == 'Trip Documents') {
       documentType = 'Trip';
-    } else if (widget.title == 'Family Member Documents' || (widget.isFamilyLeader && widget.ownerName != null)) {
+    } else if (widget.title == 'Family Member Documents' || widget.ownerName != null || (_isFamilyLeader && widget.ownerName != null)) {
       documentType = 'Family';
     }
 
@@ -422,9 +576,11 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Upload Document',
-                          style: TextStyle(
+                        Text(
+                          widget.ownerName != null 
+                              ? 'Upload for ${widget.ownerName}' 
+                              : 'Upload Document',
+                          style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: AppColors.textPrimary,
@@ -584,7 +740,8 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                                   );
                                   return;
                                 }
-                                if (widget.tripData == null) {
+                                final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
+                                if (tripId == null || tripId.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text('Trip context is missing!')),
                                   );
@@ -596,38 +753,43 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
 
                                 try {
                                   final response = await _documentService.uploadDocument(
-                                    tripId: widget.tripData!['_id'],
+                                    tripId: tripId,
                                     filePath: selectedFilePath!,
                                     name: selectedDocName,
                                     number: enteredDocNumber,
                                     type: documentType,
                                     belongsTo: (documentType == 'Family' || widget.ownerId != null) ? belongsTo : null,
-                                    memberName: (documentType == 'Family') ? memberName : (widget.ownerId != null ? widget.ownerName : null),
+                                    memberName: widget.ownerName ?? ((documentType == 'Family') ? memberName : null),
                                   );
 
-                                    if (response['success'] == true) {
-                                      Navigator.pop(context); // close modal
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Document uploaded successfully')),
-                                      );
-                                      // Add to local list dynamically
-                                      if (response['document'] != null) {
-                                        setState(() {
-                                          final newDoc = Map<String, dynamic>.from(response['document']);
-                                          newDoc['color'] = newDoc['name'].toString().toLowerCase().contains('flight') ? const Color(0xFF8B5CF6) : AppColors.primary;
-                                          newDoc['icon'] = newDoc['name'].toString().toLowerCase().contains('flight') ? Icons.flight_takeoff_outlined : Icons.description_outlined;
-                                          _allDocs.insert(0, newDoc);
-                                        });
-                                      }
-                                    } else {
+                                  if (!mounted) return;
+
+                                  if (response['success'] == true) {
+                                    Navigator.pop(context); // close modal
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Document uploaded successfully')),
+                                    );
+                                    // Add to local list dynamically
+                                    if (response['document'] != null) {
+                                      setState(() {
+                                        final newDoc = Map<String, dynamic>.from(response['document']);
+                                        newDoc['color'] = newDoc['name'].toString().toLowerCase().contains('flight') ? const Color(0xFF8B5CF6) : AppColors.primary;
+                                        newDoc['icon'] = newDoc['name'].toString().toLowerCase().contains('flight') ? Icons.flight_takeoff_outlined : Icons.description_outlined;
+                                        _allDocs.insert(0, newDoc);
+                                      });
+                                    }
+                                    await _fetchDocuments();
+                                  } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(content: Text(response['message'] ?? 'Failed to upload')),
                                     );
                                   }
                                 } catch (e) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('An error occurred during upload')),
-                                  );
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('An error occurred during upload')),
+                                    );
+                                  }
                                 } finally {
                                   if (mounted) {
                                     setModalState(() => _isUploading = false);
@@ -667,9 +829,10 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
   Widget build(BuildContext context) {
     final filtered = _filteredDocs;
     final titleLower = widget.title?.toLowerCase() ?? '';
+    final isMyFamilyDocs = titleLower == 'my family documents';
     final isGroupedView = titleLower == 'member documents' || 
                           titleLower == 'family member documents' || 
-                          titleLower == 'my family documents';
+                          isMyFamilyDocs;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -715,7 +878,9 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
             ),
             const SizedBox(height: 2),
             Text(
-              '${isGroupedView ? _participants.length : filtered.length} items available',
+              isGroupedView
+                  ? '${_participants.length} ${_participants.length == 1 ? 'member' : 'members'} available'
+                  : '${filtered.length} ${filtered.length == 1 ? 'document' : 'documents'} available',
               style: const TextStyle(
                 color: AppColors.textSecondary,
                 fontSize: 11,
@@ -814,77 +979,121 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
 
                   // Distribute documents into these groups
                   for (var doc in filtered) {
-                    if (doc['isMine'] == true) {
-                      if (memberGroups.containsKey('You')) {
-                        memberGroups['You']!.add(doc);
-                      }
-                      // If there is no "You" folder (e.g. Member Documents view),
-                      // the leader's own documents must NEVER be placed in any member's folder!
-                      continue;
-                    }
                     if (doc['type'] == 'Trip') {
-                      // Shared trip documents belong in Trip Documents, not in individual member folders
                       continue;
                     }
 
-                    String owner = 'Unknown';
-                    if (doc['memberName'] != null && doc['memberName'].toString().trim().isNotEmpty) {
-                      owner = doc['memberName'].toString().trim();
-                    } else if (doc['belongsTo'] != null) {
-                      if (doc['belongsTo'] is Map) {
-                        final fName = doc['belongsTo']['firstName']?.toString() ?? '';
-                        final lName = doc['belongsTo']['lastName']?.toString() ?? '';
-                        if (fName.isNotEmpty || lName.isNotEmpty) {
-                          owner = '$fName $lName'.trim();
-                        }
-                      } else if (doc['belongsTo'] is String) {
-                        owner = doc['belongsTo'];
-                      }
-                    } else if (doc['uploadedBy'] != null && doc['uploadedBy'] is Map) {
-                      final fName = doc['uploadedBy']['firstName']?.toString() ?? '';
-                      final lName = doc['uploadedBy']['lastName']?.toString() ?? '';
-                      if (fName.isNotEmpty || lName.isNotEmpty) {
-                        owner = '$fName $lName'.trim();
-                      }
-                    }
+                    final docMemberName = (doc['memberName']?.toString().trim() ?? '').toLowerCase();
+                    final docBelongsToId = (doc['belongsTo'] is Map 
+                        ? (doc['belongsTo']['_id']?.toString() ?? '') 
+                        : (doc['belongsToId']?.toString() ?? doc['belongsTo']?.toString() ?? '')).trim();
                     
-                    // Match against participants
-                    for (var p in _participants) {
-                      final pName = p['name']?.toString().trim() ?? '';
-                      final pUserId = p['userId']?.toString() ?? '';
-                      final pId = (p['_id'] ?? p['id'])?.toString() ?? '';
-                      final docBelongsTo = doc['belongsTo'] is Map ? (doc['belongsTo']['_id']?.toString() ?? '') : doc['belongsTo']?.toString() ?? '';
-                      final docUploadedBy = doc['uploadedBy'] is Map ? (doc['uploadedBy']['_id']?.toString() ?? '') : doc['uploadedBy']?.toString() ?? '';
-                      final docMemberName = doc['memberName']?.toString().trim() ?? '';
+                    String docBelongsToName = '';
+                    if (doc['belongsTo'] is Map) {
+                      final fName = doc['belongsTo']['firstName']?.toString().trim() ?? '';
+                      final lName = doc['belongsTo']['lastName']?.toString().trim() ?? '';
+                      docBelongsToName = '$fName $lName'.trim().toLowerCase();
+                    }
 
-                      if (pName.isNotEmpty && (
-                          owner == pName || 
-                          docMemberName.toLowerCase() == pName.toLowerCase() ||
-                          (pUserId.isNotEmpty && (owner == pUserId || docBelongsTo == pUserId || docUploadedBy == pUserId)) ||
-                          (pId.isNotEmpty && (owner == pId || docBelongsTo == pId || docUploadedBy == pId))
-                        )) {
-                        owner = pName;
-                        break;
+                    String? matchedOwner;
+
+                    // Pass 1: Prioritize matching by memberName across all participants (excluding "You")
+                    // This is essential because family members share the Family Leader's account/belongsToId.
+                    // Checking memberName first prevents family member documents from being incorrectly attributed to the Family Leader.
+                    if (docMemberName.isNotEmpty) {
+                      for (var p in _participants) {
+                        if (p['isYou'] == true || p['name'] == 'You') continue;
+                        final pName = (p['name']?.toString().trim() ?? '');
+                        if (_isNameMatch(pName, docMemberName)) {
+                          matchedOwner = p['name'];
+                          break;
+                        }
                       }
                     }
 
-                    if (!memberGroups.containsKey(owner)) {
-                      memberGroups[owner] = [];
-                      if (doc['belongsTo'] is Map && doc['belongsTo']['profilePhoto'] != null) {
-                        participantAvatars[owner] = doc['belongsTo']['profilePhoto'];
-                      } else if (doc['uploadedBy'] is Map && doc['uploadedBy']['profilePhoto'] != null) {
-                        participantAvatars[owner] = doc['uploadedBy']['profilePhoto'];
-                      }
-                      if (doc['belongsTo'] is Map && doc['belongsTo']['_id'] != null) {
-                        participantIds[owner] = doc['belongsTo']['_id'].toString();
-                      } else if (doc['uploadedBy'] is Map && doc['uploadedBy']['_id'] != null) {
-                        participantIds[owner] = doc['uploadedBy']['_id'].toString();
+                    // Pass 2: If no memberName matched, match by belongsTo ID (userId or member subdocument _id)
+                    if (matchedOwner == null && docBelongsToId.isNotEmpty) {
+                      for (var p in _participants) {
+                        if (p['isYou'] == true || p['name'] == 'You') continue;
+                        final pUserId = (p['userId']?.toString() ?? '').trim();
+                        final pId = ((p['_id'] ?? p['id'])?.toString() ?? '').trim();
+                        if (docBelongsToId == pUserId || docBelongsToId == pId) {
+                          matchedOwner = p['name'];
+                          break;
+                        }
                       }
                     }
-                    memberGroups[owner]!.add(doc);
+
+                    // Pass 3: Match by belongsTo user full name
+                    if (matchedOwner == null && docBelongsToName.isNotEmpty) {
+                      for (var p in _participants) {
+                        if (p['isYou'] == true || p['name'] == 'You') continue;
+                        final pName = (p['name']?.toString().trim() ?? '');
+                        if (_isNameMatch(pName, docBelongsToName)) {
+                          matchedOwner = p['name'];
+                          break;
+                        }
+                      }
+                    }
+
+                    // Pass 4: Fallback to "You" only if it belongs to current user
+                    if (matchedOwner == null) {
+                      if (doc['isMine'] == true || docMemberName == 'you') {
+                        matchedOwner = 'You';
+                      }
+                    }
+
+                    if (isMyFamilyDocs) {
+                      // In "My Family Documents", ONLY add documents to folders of participants in _participants
+                      if (matchedOwner != null && memberGroups.containsKey(matchedOwner)) {
+                        memberGroups[matchedOwner]!.add(doc);
+                      }
+                    } else {
+                      // In other views (like Member Documents):
+                      // Do not add leader or leader's family members to member groups
+                      if (matchedOwner == 'You') continue;
+                      if (matchedOwner != null) {
+                        bool isOwnFamily = false;
+                        for (var famName in _myFamilyNames) {
+                          if (_isNameMatch(famName, matchedOwner)) {
+                            isOwnFamily = true;
+                            break;
+                          }
+                        }
+                        if (_myFamilyIds.contains(participantIds[matchedOwner])) {
+                          isOwnFamily = true;
+                        }
+                        if (isOwnFamily) continue;
+                      }
+
+                      if (matchedOwner == null && doc['memberName'] != null && doc['memberName'].toString().trim().isNotEmpty) {
+                        final potentialName = doc['memberName'].toString().trim();
+                        bool isOwnFamily = false;
+                        for (var famName in _myFamilyNames) {
+                          if (_isNameMatch(famName, potentialName)) {
+                            isOwnFamily = true;
+                            break;
+                          }
+                        }
+                        if (!isOwnFamily) {
+                          matchedOwner = potentialName;
+                        }
+                      }
+                      if (matchedOwner != null) {
+                        if (!memberGroups.containsKey(matchedOwner)) {
+                          memberGroups[matchedOwner] = [];
+                          if (doc['belongsTo'] is Map && doc['belongsTo']['profilePhoto'] != null) {
+                            participantAvatars[matchedOwner] = doc['belongsTo']['profilePhoto'];
+                          }
+                        }
+                        memberGroups[matchedOwner]!.add(doc);
+                      }
+                    }
                   }
 
-                  final owners = memberGroups.keys.toList();
+                  final owners = isMyFamilyDocs
+                      ? _participants.map((p) => p['name']?.toString() ?? 'Unknown').where((n) => memberGroups.containsKey(n)).toList()
+                      : memberGroups.keys.toList();
 
                   if (owners.isEmpty) {
                     return Center(
@@ -979,7 +1188,8 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                                 title: isThisYou ? 'My Documents' : '$ownerName\'s Documents',
                                 documents: ownerDocs,
                                 tripData: widget.tripData,
-                                isFamilyLeader: widget.isFamilyLeader,
+                                isFamilyLeader: isThisYou ? false : isMyFamilyDocs,
+                                isFromMemberDocs: !isMyFamilyDocs,
                                 ownerId: participantIds[ownerName] != null && participantIds[ownerName]!.isNotEmpty ? participantIds[ownerName] : null,
                                 ownerName: isThisYou ? null : ownerName,
                               ),
@@ -1018,7 +1228,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                '${ownerDocs.length} Documents',
+                                '${ownerDocs.length} ${ownerDocs.length == 1 ? 'Document' : 'Documents'}',
                                 style: const TextStyle(
                                   color: Color(0xFF64748B),
                                   fontSize: 13,
