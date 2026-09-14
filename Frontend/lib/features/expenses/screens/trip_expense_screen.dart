@@ -403,8 +403,8 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
           ),
           const SizedBox(width: 12),
 
-          // Family Leader Switcher Dropdown (if leader)
-          if (_isFamilyLeader && _myFamilyMembers.isNotEmpty) ...[
+          // Family Leader / Trip Leader Switcher Dropdown (if leader with non-app family members)
+          if ((_isFamilyLeader || _myFamilyMembers.isNotEmpty) && _myFamilyMembers.isNotEmpty) ...[
             PopupMenuButton<String>(
               icon: Container(
                 padding: const EdgeInsets.all(7),

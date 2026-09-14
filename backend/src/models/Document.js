@@ -31,6 +31,21 @@ const documentSchema = new mongoose.Schema({
     enum: ['Personal', 'Family', 'Trip'],
     default: 'Personal'
   },
+  category: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  docDate: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  notes: {
+    type: String,
+    trim: true,
+    default: null
+  },
   memberName: {
     type: String,
     trim: true,

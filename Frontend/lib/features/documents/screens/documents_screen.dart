@@ -256,7 +256,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         if (mounted) {
           setState(() {
             _allFetchedDocuments = allDocs;
-            _myDocuments = allDocs.where((d) => (d['type'] == 'Personal' || d['type'] == null) && d['isMine'] == true).toList();
+            _myDocuments = allDocs.where((d) => d['type'] != 'Trip' && (d['isMine'] == true || (d['memberName']?.toString().trim().toLowerCase() == 'you'))).toList();
             _tripDocuments = allDocs.where((d) => d['type'] == 'Trip').toList();
           });
         }
@@ -321,14 +321,18 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildPhotoGallerySection(),
-                      if (_canViewDocuments) ...[
-                        const SizedBox(height: 20),
-                        _buildPersonalOrFamilyDocsCard(),
-                        if (_shouldShowMemberDocuments) ...[
+                      if (!widget.isPhotoGalleryOnly) ...[
+                        if (_canViewDocuments) ...[
+                          const SizedBox(height: 20),
+                          _buildPersonalOrFamilyDocsCard(),
+                          if (_shouldShowMemberDocuments) ...[
+                            const SizedBox(height: 16),
+                            _buildMemberDocsCard(),
+                          ],
                           const SizedBox(height: 16),
-                          _buildMemberDocsCard(),
+                        ] else ...[
+                          const SizedBox(height: 20),
                         ],
-                        const SizedBox(height: 16),
                         _buildTripDocsCard(),
                       ],
                       const SizedBox(height: 100), // Extra space for FAB

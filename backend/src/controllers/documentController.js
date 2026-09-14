@@ -3,13 +3,14 @@ import TripParticipant from '../models/TripParticipant.js';
 import Family from '../models/Family.js';
 import Trip from '../models/Trip.js';
 import mongoose from 'mongoose';
+import fs from 'fs';
 
 // @desc    Upload a document
 // @route   POST /api/documents/upload
 // @access  Private
 export const uploadDocument = async (req, res) => {
   try {
-    const { tripId, name, number, belongsTo, type } = req.body;
+    const { tripId, name, number, belongsTo, type, category, docDate, notes } = req.body;
     const uploadedBy = req.user._id;
 
     if (!req.file) {
@@ -22,11 +23,19 @@ export const uploadDocument = async (req, res) => {
 
     // Verify user role in trip
     const participant = await TripParticipant.findOne({ tripId, userId: uploadedBy });
-    if (!participant) {
+    const trip = await Trip.findById(tripId);
+    if (!participant && (!trip || trip.createdBy?.toString() !== uploadedBy.toString())) {
       return res.status(403).json({ success: false, message: 'You are not a participant in this trip' });
     }
 
-    if (participant.role === 'familyMember' && type && type !== 'Personal') {
+    const isTripLeaderOrCreator = (participant && (participant.role === 'tripLeader' || participant.role === 'creator' || participant.role === 'admin')) ||
+                                  (trip && trip.createdBy && trip.createdBy.toString() === uploadedBy.toString());
+
+    if (type === 'Trip' && !isTripLeaderOrCreator) {
+      return res.status(403).json({ success: false, message: 'Only trip leader can upload trip documents' });
+    }
+
+    if (participant && participant.role === 'familyMember' && type && type !== 'Personal') {
       return res.status(403).json({ success: false, message: 'Family members can only upload Personal documents' });
     }
 
@@ -36,14 +45,14 @@ export const uploadDocument = async (req, res) => {
 
     // Solo traveler and regular members can only upload Personal documents belonging to themselves
     let documentType = type || 'Personal';
-    if (participant.role === 'soloTraveler' || participant.role === 'familyMember') {
+    if (participant && (participant.role === 'soloTraveler' || participant.role === 'familyMember')) {
       documentType = 'Personal';
     }
 
     let parsedBelongsTo = uploadedBy;
     let memberNameStr = null;
 
-    if (belongsTo && participant.role !== 'soloTraveler' && participant.role !== 'familyMember') {
+    if (belongsTo && participant && participant.role !== 'soloTraveler' && participant.role !== 'familyMember') {
       if (mongoose.Types.ObjectId.isValid(belongsTo)) {
         parsedBelongsTo = belongsTo;
       } else {
@@ -51,7 +60,7 @@ export const uploadDocument = async (req, res) => {
       }
     }
 
-    if (req.body.memberName && participant.role !== 'soloTraveler' && participant.role !== 'familyMember') {
+    if (req.body.memberName && participant && participant.role !== 'soloTraveler' && participant.role !== 'familyMember') {
       memberNameStr = req.body.memberName;
     }
 
@@ -63,6 +72,9 @@ export const uploadDocument = async (req, res) => {
       name,
       number,
       type: documentType,
+      category: category || (documentType === 'Trip' ? 'General' : null),
+      docDate: docDate || null,
+      notes: notes || null,
       fileUrl
     });
 
@@ -88,10 +100,23 @@ export const getTripDocuments = async (req, res) => {
     const userId = req.user._id;
 
     // Verify user role or creator
-    const participant = await TripParticipant.findOne({ tripId, userId });
+    let participant = await TripParticipant.findOne({ tripId, userId });
     const trip = await Trip.findById(tripId);
     
-    if (!participant && (!trip || trip.createdBy?.toString() !== userId.toString())) {
+    // Check if user is a member of any family in this trip
+    let userFamily = null;
+    const userEmail = req.user.email ? req.user.email.toLowerCase() : '';
+    if (!participant || participant.role === 'familyMember') {
+      userFamily = await Family.findOne({
+        tripId,
+        $or: [
+          { "members.userId": userId },
+          ...(userEmail ? [{ "members.email": { $regex: new RegExp(`^${userEmail}$`, 'i') } }] : [])
+        ]
+      });
+    }
+
+    if (!participant && !userFamily && (!trip || trip.createdBy?.toString() !== userId.toString())) {
       return res.status(403).json({ success: false, message: 'You are not a participant in this trip' });
     }
 
@@ -105,7 +130,7 @@ export const getTripDocuments = async (req, res) => {
       documents = await Document.find({ tripId })
         .populate('belongsTo', 'firstName lastName email profilePhoto')
         .populate('uploadedBy', 'firstName lastName email profilePhoto');
-    } else if (participant.role === 'familyLeader') {
+    } else if (participant && participant.role === 'familyLeader') {
       // Family leader can see their own documents + their family members' documents + trip docs
       const family = await Family.findOne({ tripId, familyLeaderId: userId });
       
@@ -133,7 +158,7 @@ export const getTripDocuments = async (req, res) => {
       .populate('belongsTo', 'firstName lastName email profilePhoto')
       .populate('uploadedBy', 'firstName lastName email profilePhoto');
 
-    } else if (participant.role === 'soloTraveler') {
+    } else if (participant && participant.role === 'soloTraveler') {
       // Solo traveler can see their own personal documents for this trip + trip documents
       documents = await Document.find({ 
         tripId, 
@@ -146,12 +171,29 @@ export const getTripDocuments = async (req, res) => {
       .populate('uploadedBy', 'firstName lastName email profilePhoto');
 
     } else {
-      // Regular members / familyMember can see their own personal documents for this trip + trip documents
+      // Regular members / familyMember can see all shared Trip documents + their personal documents
+      let memberIds = [userId.toString()];
+      let memberNames = [];
+
+      const fam = userFamily || (participant?.familyId ? await Family.findById(participant.familyId) : await Family.findOne({ tripId, "members.userId": userId }));
+      if (fam && fam.members) {
+        const found = fam.members.find(m => 
+          (m.userId && m.userId.toString() === userId.toString()) || 
+          (m.email && userEmail && m.email.toLowerCase() === userEmail)
+        );
+        if (found) {
+          if (found._id) memberIds.push(found._id.toString());
+          if (found.name) memberNames.push(found.name.trim());
+        }
+      }
+
       documents = await Document.find({ 
         tripId, 
         $or: [
-          { belongsTo: userId },
-          { type: 'Trip' }
+          { type: 'Trip' },
+          { belongsTo: { $in: memberIds } },
+          { uploadedBy: userId },
+          ...(memberNames.length > 0 ? [{ memberName: { $in: memberNames } }] : [])
         ]
       })
       .populate('belongsTo', 'firstName lastName email profilePhoto')
@@ -189,5 +231,146 @@ export const getTripDocuments = async (req, res) => {
   } catch (error) {
     console.error('Error fetching documents:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch documents', error: error.message });
+  }
+};
+
+// @desc    Update a document
+// @route   PUT /api/documents/:id
+// @access  Private
+export const updateDocument = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, number, category, docDate, notes } = req.body;
+    const userId = req.user._id;
+
+    const document = await Document.findById(id);
+    if (!document) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
+    }
+
+    const participant = await TripParticipant.findOne({ tripId: document.tripId, userId });
+    const trip = await Trip.findById(document.tripId);
+
+    const isUploader = document.uploadedBy.toString() === userId.toString();
+    const isOwner = document.belongsTo && document.belongsTo.toString() === userId.toString();
+    const isTripLeaderOrCreator = (participant && (participant.role === 'tripLeader' || participant.role === 'creator' || participant.role === 'admin')) ||
+                                  (trip && trip.createdBy && trip.createdBy.toString() === userId.toString());
+
+    // Only trip leader can update Trip documents
+    if (document.type === 'Trip' && !isTripLeaderOrCreator) {
+      return res.status(403).json({ success: false, message: 'Only trip leader can update trip documents' });
+    }
+
+    let isFamilyLeader = false;
+    if (participant && (participant.role === 'familyLeader' || participant.role === 'family leader')) {
+      const family = await Family.findOne({ tripId: document.tripId, familyLeaderId: userId });
+      if (family && family.members) {
+        const allowedIds = [userId.toString(), ...family.members.map(m => (m.userId ? m.userId.toString() : m._id ? m._id.toString() : ''))];
+        if (allowedIds.includes(document.uploadedBy.toString()) || (document.belongsTo && allowedIds.includes(document.belongsTo.toString()))) {
+          isFamilyLeader = true;
+        }
+      }
+    }
+
+    if (!isUploader && !isOwner && !isTripLeaderOrCreator && !isFamilyLeader) {
+      return res.status(403).json({ success: false, message: 'Not authorized to update this document' });
+    }
+
+    if (name) document.name = name.trim();
+    if (number !== undefined) document.number = number.trim();
+    if (category !== undefined) document.category = category ? category.trim() : null;
+    if (docDate !== undefined) document.docDate = docDate ? docDate.trim() : null;
+    if (notes !== undefined) document.notes = notes ? notes.trim() : null;
+
+    if (req.file) {
+      // Remove old file if it exists
+      if (document.fileUrl) {
+        const oldRelative = document.fileUrl.startsWith('/') ? document.fileUrl.substring(1) : document.fileUrl;
+        if (fs.existsSync(oldRelative)) {
+          try {
+            fs.unlinkSync(oldRelative);
+          } catch (e) {
+            console.error('Error deleting old document file:', e);
+          }
+        }
+      }
+      document.fileUrl = '/' + req.file.path.replace(/\\/g, '/');
+    }
+
+    const updatedDocument = await document.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Document updated successfully',
+      document: updatedDocument
+    });
+  } catch (error) {
+    console.error('Error updating document:', error);
+    res.status(500).json({ success: false, message: 'Failed to update document', error: error.message });
+  }
+};
+
+// @desc    Delete a document
+// @route   DELETE /api/documents/:id
+// @access  Private
+export const deleteDocument = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const document = await Document.findById(id);
+    if (!document) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
+    }
+
+    const participant = await TripParticipant.findOne({ tripId: document.tripId, userId });
+    const trip = await Trip.findById(document.tripId);
+
+    const isUploader = document.uploadedBy.toString() === userId.toString();
+    const isOwner = document.belongsTo && document.belongsTo.toString() === userId.toString();
+    const isTripLeaderOrCreator = (participant && (participant.role === 'tripLeader' || participant.role === 'creator' || participant.role === 'admin')) ||
+                                  (trip && trip.createdBy && trip.createdBy.toString() === userId.toString());
+
+    // Only trip leader can delete Trip documents
+    if (document.type === 'Trip' && !isTripLeaderOrCreator) {
+      return res.status(403).json({ success: false, message: 'Only trip leader can delete trip documents' });
+    }
+
+    let isFamilyLeader = false;
+    if (participant && (participant.role === 'familyLeader' || participant.role === 'family leader')) {
+      const family = await Family.findOne({ tripId: document.tripId, familyLeaderId: userId });
+      if (family && family.members) {
+        const allowedIds = [userId.toString(), ...family.members.map(m => (m.userId ? m.userId.toString() : m._id ? m._id.toString() : ''))];
+        if (allowedIds.includes(document.uploadedBy.toString()) || (document.belongsTo && allowedIds.includes(document.belongsTo.toString()))) {
+          isFamilyLeader = true;
+        }
+      }
+    }
+
+    if (!isUploader && !isOwner && !isTripLeaderOrCreator && !isFamilyLeader) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this document' });
+    }
+
+    // Delete file from disk if exists
+    if (document.fileUrl) {
+      const oldRelative = document.fileUrl.startsWith('/') ? document.fileUrl.substring(1) : document.fileUrl;
+      if (fs.existsSync(oldRelative)) {
+        try {
+          fs.unlinkSync(oldRelative);
+        } catch (e) {
+          console.error('Error deleting document file from disk:', e);
+        }
+      }
+    }
+
+    await Document.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Document deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting document:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete document', error: error.message });
   }
 };

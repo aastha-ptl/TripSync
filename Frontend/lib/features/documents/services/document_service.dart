@@ -37,6 +37,9 @@ class DocumentService {
     required String name,
     required String number,
     required String type,
+    String? category,
+    String? docDate,
+    String? notes,
     String? belongsTo,
     String? memberName,
   }) async {
@@ -59,6 +62,9 @@ class DocumentService {
       request.fields['name'] = name;
       request.fields['number'] = number;
       request.fields['type'] = type;
+      if (category != null) request.fields['category'] = category;
+      if (docDate != null) request.fields['docDate'] = docDate;
+      if (notes != null) request.fields['notes'] = notes;
       if (belongsTo != null) {
         request.fields['belongsTo'] = belongsTo;
       }
@@ -90,6 +96,82 @@ class DocumentService {
       }
     } catch (e) {
       throw Exception('Error uploading document: $e');
+    }
+  }
+
+  // Update Document
+  Future<Map<String, dynamic>> updateDocument({
+    required String documentId,
+    required String name,
+    required String number,
+    String? category,
+    String? docDate,
+    String? notes,
+    String? filePath,
+  }) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) throw Exception('Not authenticated');
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final uri = Uri.parse('$baseUrl${ApiEndpoints.documents}/$documentId');
+
+      final request = http.MultipartRequest('PUT', uri);
+
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+      });
+
+      request.fields['name'] = name;
+      request.fields['number'] = number;
+      if (category != null) request.fields['category'] = category;
+      if (docDate != null) request.fields['docDate'] = docDate;
+      if (notes != null) request.fields['notes'] = notes;
+
+      if (filePath != null && filePath.isNotEmpty) {
+        final mimeTypeData = lookupMimeType(filePath, headerBytes: [0xFF, 0xD8])?.split('/');
+        final file = await http.MultipartFile.fromPath(
+          'file',
+          filePath,
+          contentType: mimeTypeData != null ? MediaType(mimeTypeData[0], mimeTypeData[1]) : null,
+        );
+        request.files.add(file);
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      final responseData = json.decode(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return responseData;
+      } else {
+        throw Exception(responseData['message'] ?? 'Failed to update document');
+      }
+    } catch (e) {
+      throw Exception('Error updating document: $e');
+    }
+  }
+
+  // Delete Document
+  Future<Map<String, dynamic>> deleteDocument(String documentId) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final response = await http.delete(
+        Uri.parse('$baseUrl${ApiEndpoints.documents}/$documentId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete document: $e'};
     }
   }
 }

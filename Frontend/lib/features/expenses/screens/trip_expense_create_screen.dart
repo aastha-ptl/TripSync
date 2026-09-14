@@ -448,8 +448,8 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
           ),
         ),
 
-        // Family Leader Dropdown (if applicable)
-        if (_isFamilyLeader && _myFamilyMembers.isNotEmpty)
+        // Family Leader / Trip Leader with Family Dropdown (if applicable)
+        if ((_isFamilyLeader || _myFamilyMembers.isNotEmpty) && _myFamilyMembers.isNotEmpty)
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),

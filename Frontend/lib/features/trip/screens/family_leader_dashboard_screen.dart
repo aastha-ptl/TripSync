@@ -10,6 +10,7 @@ import 'photo_gallery_screen.dart';
 import 'package:intl/intl.dart';
 import '../../itinerary/services/itinerary_service.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../services/trip_service.dart';
 
 class FamilyLeaderDashboardScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
@@ -31,11 +32,52 @@ class _FamilyLeaderDashboardScreenState extends State<FamilyLeaderDashboardScree
   int _selectedNavIndex = 0;
   bool _isLoading = true;
   List<Map<String, dynamic>> _upcomingActivities = [];
+  int? _membersCount;
+  final TripService _tripService = TripService();
 
   @override
   void initState() {
     super.initState();
     _fetchUpcomingActivities();
+    _fetchTripMembersCount();
+  }
+
+  Future<void> _fetchTripMembersCount() async {
+    final tripId = widget.tripData?['id'] ?? widget.tripData?['_id'];
+    if (tripId == null) return;
+    try {
+      final res = await _tripService.getTripParticipants(tripId.toString());
+      if (res['success'] == true && res['data'] is List && mounted) {
+        final List<dynamic> rawData = res['data'];
+        int total = 0;
+        for (var p in rawData) {
+          final role = p['role']?.toString().toLowerCase() ?? '';
+          final type = p['type']?.toString().toLowerCase() ?? '';
+          final group = p['group']?.toString().toLowerCase() ?? '';
+          final fm = p['familyMembers'] as List<dynamic>? ?? [];
+
+          final hasFamily = fm.isNotEmpty;
+          final isFamily = hasFamily &&
+              (type == 'family' ||
+                  group.contains('family') ||
+                  role == 'familyleader' ||
+                  role == 'family_leader' ||
+                  role == 'tripleader' ||
+                  role == 'trip_leader');
+
+          if (isFamily) {
+            total += 1 + fm.length;
+          } else {
+            total += 1;
+          }
+        }
+        if (total > 0 && mounted) {
+          setState(() {
+            _membersCount = total;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchUpcomingActivities() async {
@@ -135,6 +177,7 @@ class _FamilyLeaderDashboardScreenState extends State<FamilyLeaderDashboardScree
             setState(() {
               _selectedNavIndex = 0;
             });
+            _fetchTripMembersCount();
           },
         ),
         bottomNavigationBar: _buildBottomNavigationBar(),
@@ -319,7 +362,7 @@ class _FamilyLeaderDashboardScreenState extends State<FamilyLeaderDashboardScree
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '${widget.tripData?['membersCount'] ?? 1} Members',
+                                '${_membersCount ?? widget.tripData?['membersCount'] ?? 1} Members',
                                 style: const TextStyle(
                                   fontSize: 11,
                                   color: Color(0xFF64748B),
@@ -413,78 +456,53 @@ String _getTripDuration() {
 
 
   Widget _buildQuickActionGrid() {
-    return Column(
+    return Row(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildQuickActionCard(
-                color: const Color(0xFFE8F0FE),
-                iconColor: const Color(0xFF1E5AE6),
-                icon: Icons.calendar_month_outlined,
-                title: 'Itinerary',
-                subtitle: 'View your trip plan',
-                textColor: const Color(0xFF1E5AE6),
-                onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.itinerary, arguments: {'tripData': widget.tripData, 'isSoloTraveler': true});
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildQuickActionCard(
-                color: const Color(0xFFF3E8FF),
-                iconColor: const Color(0xFF9333EA),
-                icon: Icons.chat_bubble_outline,
-                title: 'Tasks',
-                subtitle: 'Manage tasks',
-                textColor: const Color(0xFF9333EA),
-                onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.tasks, arguments: {'tripData': widget.tripData});
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildQuickActionCard(
-                color: const Color(0xFFFFF2E6),
-                iconColor: const Color(0xFFEA580C),
-                icon: Icons.pie_chart_outline,
-                title: 'Trip Overview',
-                subtitle: 'Trip summary',
-                textColor: const Color(0xFFEA580C),
-                onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.tripOverview, arguments: {'tripData': widget.tripData});
-                },
-              ),
-            ),
-          ],
+        Expanded(
+          child: _buildQuickActionCard(
+            color: const Color(0xFFE8F0FE),
+            iconColor: const Color(0xFF1E5AE6),
+            icon: Icons.calendar_month_outlined,
+            title: 'Itinerary',
+            subtitle: 'View your trip plan',
+            textColor: const Color(0xFF1E5AE6),
+            onTap: () {
+              Navigator.pushNamed(context, AppRoutes.itinerary, arguments: {'tripData': widget.tripData, 'isSoloTraveler': true});
+            },
+          ),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              flex: 1,
-              child: _buildQuickActionCard(
-                color: const Color(0xFFE6F4EA),
-                iconColor: const Color(0xFF137333),
-                icon: Icons.photo_library_outlined,
-                title: 'Photo Gallery',
-                subtitle: 'View photos',
-                textColor: const Color(0xFF137333),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PhotoGalleryScreen(tripData: widget.tripData!),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Expanded(flex: 2, child: SizedBox()), // Placeholder for alignment
-          ],
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildQuickActionCard(
+            color: const Color(0xFFE6F4EA),
+            iconColor: const Color(0xFF137333),
+            icon: Icons.photo_library_outlined,
+            title: 'Photo Gallery',
+            subtitle: 'View photos',
+            textColor: const Color(0xFF137333),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PhotoGalleryScreen(tripData: widget.tripData!),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildQuickActionCard(
+            color: const Color(0xFFFFF2E6),
+            iconColor: const Color(0xFFEA580C),
+            icon: Icons.pie_chart_outline,
+            title: 'Trip Overview',
+            subtitle: 'Trip summary',
+            textColor: const Color(0xFFEA580C),
+            onTap: () {
+              Navigator.pushNamed(context, AppRoutes.tripOverview, arguments: {'tripData': widget.tripData});
+            },
+          ),
         ),
       ],
     );
@@ -787,34 +805,13 @@ String _getTripDuration() {
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
+          children: const [
+            Text(
               'Trip Overview',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF0F172A),
-              ),
-            ),
-            GestureDetector(
-              onTap: () {},
-              child: Row(
-                children: const [
-                  Text(
-                    'View All',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E5AE6),
-                    ),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_forward,
-                    size: 14,
-                    color: Color(0xFF1E5AE6),
-                  ),
-                ],
               ),
             ),
           ],
@@ -832,7 +829,7 @@ String _getTripDuration() {
                 child: _buildOverviewCard(
                   icon: Icons.people_alt_outlined,
                   iconColor: const Color(0xFF20C060),
-                  value: '${widget.tripData?['membersCount'] ?? 1}',
+                  value: '${_membersCount ?? widget.tripData?['membersCount'] ?? 1}',
                   label: 'Members',
                   actionLabel: 'View all',
                   actionColor: const Color(0xFF20C060),
@@ -852,22 +849,6 @@ String _getTripDuration() {
                   label: 'Duration',
                   actionLabel: 'View details',
                   actionColor: const Color(0xFF1E5AE6),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.destinations, arguments: {'tripData': widget.tripData});
-                },
-                child: _buildOverviewCard(
-                  icon: Icons.location_on_outlined,
-                  iconColor: const Color(0xFF9333EA),
-                  value: '${widget.tripData?['destinations']?.length ?? 1}',
-                  label: 'Destinations',
-                  actionLabel: 'View all',
-                  actionColor: const Color(0xFF9333EA),
                 ),
               ),
             ),
@@ -1068,6 +1049,9 @@ String _getTripDuration() {
         setState(() {
           _selectedNavIndex = index;
         });
+        if (index == 0) {
+          _fetchTripMembersCount();
+        }
       },
       child: Container(
         color: Colors.transparent,

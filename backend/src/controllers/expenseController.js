@@ -17,6 +17,18 @@ const verifyTripAccess = async (tripId, userId) => {
   return participant;
 };
 
+// Helper: check if a user is the family leader of a non-app guest member
+const isFamilyLeaderOfGuest = (families, leaderId, guestId) => {
+  if (!guestId || !leaderId) return false;
+  return families.some(
+    (f) =>
+      f.familyLeaderId &&
+      f.familyLeaderId.toString() === leaderId.toString() &&
+      f.members &&
+      f.members.some((m) => m._id.toString() === guestId.toString())
+  );
+};
+
 // 1. Get all members eligible for expense splitting in this trip
 // Returns app users and non-app family members, plus marks family members belonging to current user
 export const getTripExpenseMembers = async (req, res) => {
@@ -56,37 +68,37 @@ export const getTripExpenseMembers = async (req, res) => {
         role: p.role,
       });
 
-      // If this participant is a family leader, fetch their non-app family members
-      if (p.role === "familyLeader") {
-        const family = await Family.findOne({
-          tripId,
-          familyLeaderId: p.userId._id,
-        }).lean();
+      // Only the family leader of a family can manage or split for non-app members.
+      // An application user who is a family member (not the leader) must NOT see or add non-app members.
+      const family = await Family.findOne({
+        tripId,
+        familyLeaderId: p.userId._id,
+      }).lean();
 
-        if (family && family.members && family.members.length > 0) {
-          for (const fm of family.members) {
-            // Only non-app members (where userId is null or not set)
-            if (!fm.userId) {
-              const guestMember = {
-                id: fm._id.toString(),
-                userId: null,
-                guestId: fm._id.toString(),
-                type: "guest",
-                name: fm.name,
-                avatar: null,
-                relationship: fm.relationship,
-                age: fm.age,
-                leaderId: p.userId._id.toString(),
-                leaderName: `${p.userId.firstName || ""} ${p.userId.lastName || ""}`.trim(),
-                isMyFamilyMember: isCurrentUser,
-                role: "guestFamilyMember",
-              };
+      if (family && family.members && family.members.length > 0) {
+        for (const fm of family.members) {
+          // Only non-app members (where userId is null or not set)
+          if (!fm.userId) {
+            const guestMember = {
+              id: fm._id.toString(),
+              userId: null,
+              guestId: fm._id.toString(),
+              type: "guest",
+              name: fm.name,
+              avatar: null,
+              relationship: fm.relationship,
+              age: fm.age,
+              leaderId: p.userId._id.toString(),
+              leaderName: `${p.userId.firstName || ""} ${p.userId.lastName || ""}`.trim(),
+              isMyFamilyMember: isCurrentUser,
+              role: "guestFamilyMember",
+            };
 
+            // Non-app family members can ONLY be added to splits by their own family leader.
+            // Do NOT include guestMember in `members` for other application users or family members.
+            if (isCurrentUser) {
               members.push(guestMember);
-
-              if (isCurrentUser) {
-                myNonAppFamilyMembers.push(guestMember);
-              }
+              myNonAppFamilyMembers.push(guestMember);
             }
           }
         }
@@ -98,7 +110,7 @@ export const getTripExpenseMembers = async (req, res) => {
       data: {
         members,
         myNonAppFamilyMembers,
-        isFamilyLeader: access.role === "familyLeader",
+        isFamilyLeader: access.role === "familyLeader" || myNonAppFamilyMembers.length > 0,
       },
     });
   } catch (error) {
@@ -149,6 +161,26 @@ export const createExpense = async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.status(400).json({ success: false, message: "At least one participant is required" });
+    }
+
+    // Validate that non-app family members can ONLY be added to splits by their own family leader
+    for (const p of rawParticipants) {
+      if (p.type === "guest" || p.guestId) {
+        const guestId = p.guestId || p.id;
+        const family = await Family.findOne({
+          tripId,
+          familyLeaderId: userId,
+          "members._id": guestId,
+        });
+        if (!family) {
+          await session.abortTransaction();
+          session.endSession();
+          return res.status(403).json({
+            success: false,
+            message: "Non-application family members can only be added to splits by their own family leader.",
+          });
+        }
+      }
     }
 
     // Determine who paid
@@ -348,6 +380,10 @@ export const getTripExpenses = async (req, res) => {
 
     if (filter === "my") {
       if (actingAsGuestId) {
+        if (!isFamilyLeaderOfGuest(families, userId, actingAsGuestId)) {
+          return res.status(403).json({ success: false, message: "Only the family leader can view splits for this family member" });
+        }
+
         // Find guest member name for robust fallback matching
         let actingGuestName = null;
         for (const fam of families) {
@@ -414,8 +450,16 @@ export const getTripExpenses = async (req, res) => {
           .populate("userId", "firstName lastName profilePhoto")
           .lean();
 
-        const totalParticipants = parts.length;
-        const settledParticipants = parts.filter((p) => p.settlementStatus === "settled");
+        // Non-app family members' splits are ONLY visible to their own family leader
+        const visibleParts = parts.filter((p) => {
+          if (p.participantType === "guest" && p.guestId) {
+            return isFamilyLeaderOfGuest(families, userId, p.guestId);
+          }
+          return true;
+        });
+
+        const totalParticipants = visibleParts.length;
+        const settledParticipants = visibleParts.filter((p) => p.settlementStatus === "settled");
         const paidCount = settledParticipants.length;
         const totalPaid = settledParticipants.reduce((sum, p) => sum + (p.shareAmount || 0), 0);
         const amountLeft = Math.max(0, exp.amount - totalPaid);
@@ -428,15 +472,15 @@ export const getTripExpenses = async (req, res) => {
         const isCreatedByMe = payer.entityId === currentEntityId;
 
         // Current entity's specific participant record
-        const myPart = parts.find((p) => {
+        const myPart = visibleParts.find((p) => {
           if (actingAsGuestId) {
             return p.participantType === "guest" && p.guestId && p.guestId.toString() === actingAsGuestId.toString();
           }
           return p.participantType === "user" && p.userId && p.userId._id.toString() === userId.toString();
         });
 
-        // Overlapping avatars info
-        const avatars = parts.map((p) => {
+        // Overlapping avatars info (non-app family members only shown to their own family leader)
+        const avatars = visibleParts.map((p) => {
           if (p.participantType === "user" && p.userId) {
             return {
               name: `${p.userId.firstName || ""} ${p.userId.lastName || ""}`.trim(),
@@ -485,6 +529,10 @@ export const getExpenseDetail = async (req, res) => {
     }
 
     const families = await Family.find({ tripId }).lean();
+    if (actingAsGuestId && !isFamilyLeaderOfGuest(families, userId, actingAsGuestId)) {
+      return res.status(403).json({ success: false, message: "Only the family leader can view splits for this family member" });
+    }
+
     const expense = await Expense.findOne({ _id: expenseId, tripId })
       .populate("createdBy", "firstName lastName profilePhoto")
       .lean();
@@ -500,7 +548,15 @@ export const getExpenseDetail = async (req, res) => {
       .populate("userId", "firstName lastName profilePhoto")
       .lean();
 
-    const formattedParticipants = participants.map((p) => {
+    // Non-app family members' splits are ONLY visible to their own family leader
+    const visibleParticipants = participants.filter((p) => {
+      if (p.participantType === "guest" && p.guestId) {
+        return isFamilyLeaderOfGuest(families, userId, p.guestId);
+      }
+      return true;
+    });
+
+    const formattedParticipants = visibleParticipants.map((p) => {
       const isUser = p.participantType === "user" && p.userId;
       const pEntityId = isUser ? p.userId._id.toString() : p.guestId?.toString();
       const isCurrentUser = pEntityId === currentEntityId;
@@ -590,7 +646,7 @@ export const settleParticipant = async (req, res) => {
 
     // Family leader can settle for their guest
     let isFamilyLeaderForGuest = false;
-    if (participant.participantType === "guest" && access.role === "familyLeader") {
+    if (participant.participantType === "guest" && participant.guestId) {
       const family = await Family.findOne({
         tripId,
         familyLeaderId: userId,
@@ -620,7 +676,7 @@ export const settleParticipant = async (req, res) => {
 };
 
 // Helper: Compute pairwise netted balances (+/-) between current user/guest and all other trip members
-const computeTripBalances = async (tripId, currentEntityId, isGuest = false) => {
+const computeTripBalances = async (tripId, currentEntityId, isGuest = false, requestingUserId = null) => {
   const families = await Family.find({ tripId }).lean();
   const guestInfoMap = new Map();
   for (const fam of families) {
@@ -755,6 +811,11 @@ const computeTripBalances = async (tripId, currentEntityId, isGuest = false) => 
   let totalOwedToYou = 0;
 
   balanceMap.forEach((entry) => {
+    // Non-app guest entries must only be visible to their own family leader
+    if (entry.isGuest && requestingUserId && !isFamilyLeaderOfGuest(families, requestingUserId, entry.targetId)) {
+      return;
+    }
+
     const roundedNet = Number(entry.netBalance.toFixed(2));
     if (roundedNet < -0.01) {
       const positiveAmount = Math.abs(roundedNet);
@@ -815,13 +876,22 @@ export const getExpenseSummary = async (req, res) => {
       return res.status(403).json({ success: false, message: "Not a trip participant" });
     }
 
+    const families = await Family.find({ tripId }).lean();
+    if (actingAsGuestId && !isFamilyLeaderOfGuest(families, userId, actingAsGuestId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Only the family leader can access records for this non-application member",
+      });
+    }
+
     const isGuest = !!actingAsGuestId;
     const currentEntityId = isGuest ? actingAsGuestId : userId.toString();
 
     const { totalOwedByYou, totalOwedToYou, netBalance } = await computeTripBalances(
       tripId,
       currentEntityId,
-      isGuest
+      isGuest,
+      userId
     );
 
     res.status(200).json({
@@ -851,13 +921,22 @@ export const getExpenseBalances = async (req, res) => {
       return res.status(403).json({ success: false, message: "Not a trip participant" });
     }
 
+    const families = await Family.find({ tripId }).lean();
+    if (actingAsGuestId && !isFamilyLeaderOfGuest(families, userId, actingAsGuestId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Only the family leader can access records for this non-application member",
+      });
+    }
+
     const isGuest = !!actingAsGuestId;
     const currentEntityId = isGuest ? actingAsGuestId : userId.toString();
 
     const { owedByYou, owedToYou, settled } = await computeTripBalances(
       tripId,
       currentEntityId,
-      isGuest
+      isGuest,
+      userId
     );
 
     res.status(200).json({
@@ -888,8 +967,22 @@ export const getBalanceDetail = async (req, res) => {
 
     const families = await Family.find({ tripId }).lean();
     const isCurrentGuest = !!actingAsGuestId;
-    const currentEntityId = isCurrentGuest ? actingAsGuestId.toString() : userId.toString();
+    if (isCurrentGuest && !isFamilyLeaderOfGuest(families, userId, actingAsGuestId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Only the family leader can access records for this non-application member",
+      });
+    }
+
     const isTargetGuest = isGuest === "true";
+    if (isTargetGuest && !isFamilyLeaderOfGuest(families, userId, targetId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: You cannot view balance details for this non-application member",
+      });
+    }
+
+    const currentEntityId = isCurrentGuest ? actingAsGuestId.toString() : userId.toString();
 
     // Target person info
     let targetName = "Member";
@@ -1031,12 +1124,22 @@ export const settlePersonExpenses = async (req, res) => {
       return res.status(400).json({ success: false, message: "participantIds array is required" });
     }
 
+    const families = await Family.find({ tripId }).lean();
     const parts = await ExpenseParticipant.find({
       _id: { $in: participantIds },
       tripId,
     });
 
     for (const p of parts) {
+      if (p.participantType === "guest" || p.guestId) {
+        const guestId = p.guestId?.toString();
+        if (!isFamilyLeaderOfGuest(families, userId, guestId)) {
+          return res.status(403).json({
+            success: false,
+            message: "Forbidden: Only the family leader can settle expenses for this non-application member",
+          });
+        }
+      }
       p.settlementStatus = "settled";
       p.settledAt = new Date();
       p.paidAmount = p.shareAmount;
@@ -1101,6 +1204,13 @@ export const downloadExpensePdf = async (req, res) => {
     }
 
     const families = await Family.find({ tripId }).lean();
+    if (actingAsGuestId && !isFamilyLeaderOfGuest(families, userId, actingAsGuestId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Only the family leader can download PDF for this non-application member",
+      });
+    }
+
     const trip = await Trip.findById(tripId).lean();
     const tripParticipants = await TripParticipant.find({ tripId, status: "approved" })
       .populate("userId", "firstName lastName")
@@ -1124,7 +1234,7 @@ export const downloadExpensePdf = async (req, res) => {
     }
 
     // 1. Fetch balances using pairwise mutual netting
-    const balances = await computeTripBalances(tripId, currentEntityId, isGuest);
+    const balances = await computeTripBalances(tripId, currentEntityId, isGuest, userId);
 
     // 2. Fetch all expenses
     const allExpenses = await Expense.find({ tripId, status: { $ne: "deleted" } })

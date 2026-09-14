@@ -2,6 +2,7 @@ import Trip from "../models/Trip.js";
 import TripParticipant from "../models/TripParticipant.js";
 import JoinRequest from "../models/JoinRequest.js";
 import User from "../models/User.js";
+import Family from "../models/Family.js";
 import crypto from "crypto";
 import env from "../config/env.js";
 import { v2 as cloudinary } from "cloudinary";
@@ -134,15 +135,56 @@ export const getUserTrips = async (req, res) => {
   try {
     const participants = await TripParticipant.find({ userId: req.user._id, status: "approved" }).populate("tripId");
     const trips = await Promise.all(participants.map(async (p) => {
-      const membersCount = await TripParticipant.countDocuments({ tripId: p.tripId._id, status: "approved" });
+      if (!p.tripId) return null;
+      const tripId = p.tripId._id;
+
+      // Calculate total members (registered participants + non-app family members)
+      const tripParticipants = await TripParticipant.find({ tripId, status: "approved" }).lean();
+      const families = await Family.find({ tripId }).lean();
+
+      const familiesMap = {};
+      const individuals = [];
+
+      for (const tp of tripParticipants) {
+        if (tp.familyId) {
+          const fId = tp.familyId.toString();
+          if (!familiesMap[fId]) {
+            familiesMap[fId] = { leader: null, members: [] };
+          }
+          if (tp.role === "familyLeader" || tp.role === "tripLeader") {
+            if (!familiesMap[fId].leader) {
+              familiesMap[fId].leader = tp;
+            } else {
+              familiesMap[fId].members.push(tp);
+            }
+          } else {
+            familiesMap[fId].members.push(tp);
+          }
+        } else {
+          individuals.push(tp);
+        }
+      }
+
+      let totalMembers = individuals.length;
+
+      for (const fId in familiesMap) {
+        const familyDoc = families.find((f) => f._id.toString() === fId);
+        if (familyDoc && familyDoc.members && familyDoc.members.length > 0) {
+          totalMembers += 1 + familyDoc.members.length;
+        } else {
+          const fData = familiesMap[fId];
+          totalMembers += (fData.leader ? 1 : 0) + fData.members.length;
+        }
+      }
+
       return {
         ...p.tripId.toObject(),
         participantStatus: p.status,
         participantRole: p.role,
-        membersCount: membersCount
+        membersCount: totalMembers > 0 ? totalMembers : tripParticipants.length
       };
     }));
-    res.status(200).json({ success: true, data: trips });
+    res.status(200).json({ success: true, data: trips.filter(Boolean) });
   } catch (error) {
     console.error("Get user trips error:", error);
     res.status(500).json({ success: false, message: "Server error fetching trips." });

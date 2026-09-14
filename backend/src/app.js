@@ -13,8 +13,8 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use('/uploads/documents', express.static(path.join(process.cwd(), 'uploads/documents')));
 
 app.get("/", (req, res) => {
@@ -127,6 +127,15 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
+  if (err.name === 'MulterError' || err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      success: false,
+      message: err.code === 'LIMIT_FILE_SIZE' 
+        ? 'File too large. Maximum allowed file size is 50MB.' 
+        : err.message,
+    });
+  }
+
   console.error("Unhandled error:", err.stack || err.message || err);
 
   res.status(err.statusCode || 500).json({
