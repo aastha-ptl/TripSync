@@ -34,6 +34,29 @@ const expenseSchema = new mongoose.Schema(
       index: true,
     },
 
+    dayNumber: {
+      type: Number,
+      required: true,
+      default: 1,
+    },
+
+    dayTitle: {
+      type: String,
+      default: "",
+    },
+
+    expenseType: {
+      type: String,
+      enum: ["itinerary", "other"],
+      default: "other",
+    },
+
+    itineraryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Activity",
+      default: null,
+    },
+
     title: {
       type: String,
       required: true,
@@ -45,6 +68,11 @@ const expenseSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+    },
+
+    estimatedAmount: {
+      type: Number,
+      default: null,
     },
 
     amount: {
@@ -64,7 +92,7 @@ const expenseSchema = new mongoose.Schema(
 
     category: {
       type: String,
-      enum: ["food", "transport", "hotel", "shopping", "tickets", "other"],
+      enum: ["food", "travel", "transport", "accommodation", "hotel", "activities", "shopping", "tickets", "medical", "other"],
       default: "other",
     },
 

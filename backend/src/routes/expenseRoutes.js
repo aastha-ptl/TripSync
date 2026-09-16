@@ -1,7 +1,9 @@
 import express from "express";
 import { protect } from "../middleware/authMiddleware.js";
+import { expenseUpload } from "../middleware/expenseUpload.js";
 import {
   createExpense,
+  updateExpense,
   getTripExpenses,
   getExpenseDetail,
   settleParticipant,
@@ -33,11 +35,12 @@ router.get("/balances/:targetId", getBalanceDetail);
 router.post("/settle-person", settlePersonExpenses);
 
 // Expenses list and creation (Splits tab)
-router.post("/", createExpense);
+router.post("/", expenseUpload.single('receipt'), createExpense);
 router.get("/", getTripExpenses);
 
 // Specific expense
 router.get("/:expenseId", getExpenseDetail);
+router.put("/:expenseId", expenseUpload.single('receipt'), updateExpense);
 router.post("/:expenseId/settle", settleParticipant);
 router.delete("/:expenseId", deleteExpense);
 

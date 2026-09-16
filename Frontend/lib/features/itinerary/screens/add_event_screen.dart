@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
-
+import '../../../core/utils/date_formatter.dart';
 import '../services/itinerary_service.dart';
 
 class AddEventScreen extends StatefulWidget {
@@ -27,6 +28,11 @@ class _AddEventScreenState extends State<AddEventScreen> {
   TimeOfDay? _selectedTime;
   String _selectedCategory = 'sightseeing';
 
+  DateTime? _tripStartDate;
+  DateTime? _tripEndDate;
+  List<Map<String, dynamic>> _tripDays = [];
+  int? _selectedDayNumber;
+
   final List<Map<String, dynamic>> _categories = [
     {'id': 'sightseeing', 'label': 'Sightseeing', 'icon': Icons.image_search_outlined, 'color': Color(0xFF0EA5E9)},
     {'id': 'food', 'label': 'Food', 'icon': Icons.restaurant_outlined, 'color': Color(0xFF20C060)},
@@ -37,21 +43,115 @@ class _AddEventScreenState extends State<AddEventScreen> {
   @override
   void initState() {
     super.initState();
+    _initTripDatesAndFields();
+  }
+
+  void _initTripDatesAndFields() {
+    if (widget.tripData != null &&
+        widget.tripData!['startDate'] != null &&
+        widget.tripData!['endDate'] != null) {
+      try {
+        final start = TripInfoHelper.parseTripDate(widget.tripData!['startDate'].toString());
+        final end = TripInfoHelper.parseTripDate(widget.tripData!['endDate'].toString());
+
+        _tripStartDate = DateTime(start.year, start.month, start.day);
+        _tripEndDate = DateTime(end.year, end.month, end.day);
+
+        if (_tripEndDate!.isBefore(_tripStartDate!)) {
+          _tripEndDate = _tripStartDate;
+        }
+
+        final durationInDays = _tripEndDate!.difference(_tripStartDate!).inDays + 1;
+        _tripDays = List.generate(durationInDays, (index) {
+          final dayDate = _tripStartDate!.add(Duration(days: index));
+          final dateLabel = DateFormat('MMM d').format(dayDate);
+          return {
+            'dayNumber': index + 1,
+            'label': 'Day ${index + 1} ($dateLabel)',
+            'date': dayDate,
+          };
+        });
+      } catch (e) {
+        debugPrint('Error parsing trip dates: $e');
+      }
+    }
+
     if (widget.existingActivity != null) {
       final activity = widget.existingActivity!;
       _titleController.text = activity['title'] ?? '';
       _locationController.text = activity['location'] ?? '';
       _timeController.text = activity['time'] ?? '';
-      _costController.text = (activity['cost'] ?? '').toString().replaceAll('₹', '');
+      final rawCost = activity['estimatedCost'] ?? activity['cost'];
+      if (rawCost != null) {
+        String costStr = rawCost.toString().replaceAll('₹', '').trim();
+        if (costStr.toLowerCase() == 'free') {
+          costStr = '';
+        }
+        _costController.text = costStr;
+      } else {
+        _costController.text = '';
+      }
       _notesController.text = activity['notes'] ?? '';
       
       if (activity['rawDate'] != null) {
-        _selectedDate = activity['rawDate'] as DateTime;
-        _dateController.text = "${_selectedDate!.month}/${_selectedDate!.day}/${_selectedDate!.year}";
+        final raw = activity['rawDate'] as DateTime;
+        _selectedDate = DateTime(raw.year, raw.month, raw.day);
+        _dateController.text = "${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}";
+        _syncDayFromDate(_selectedDate!);
       }
       
       _selectedCategory = activity['type'] ?? 'sightseeing';
+    } else {
+      // Default to trip start date or today if within trip range
+      if (_tripStartDate != null) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        if (!today.isBefore(_tripStartDate!) && !today.isAfter(_tripEndDate!)) {
+          _selectedDate = today;
+        } else {
+          _selectedDate = _tripStartDate;
+        }
+        _dateController.text = "${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}";
+        _syncDayFromDate(_selectedDate!);
+      }
     }
+  }
+
+  void _syncDayFromDate(DateTime date) {
+    if (_tripStartDate == null) return;
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final diff = normalizedDate.difference(_tripStartDate!).inDays;
+    if (diff >= 0 && _tripEndDate != null && !normalizedDate.isAfter(_tripEndDate!)) {
+      _selectedDayNumber = diff + 1;
+    } else {
+      _selectedDayNumber = null;
+    }
+  }
+
+  void _onDaySelected(int? dayNumber) {
+    if (dayNumber == null || _tripStartDate == null) return;
+    final newDate = _tripStartDate!.add(Duration(days: dayNumber - 1));
+    setState(() {
+      _selectedDayNumber = dayNumber;
+      _selectedDate = newDate;
+      _dateController.text = "${newDate.year}-${newDate.month.toString().padLeft(2, '0')}-${newDate.day.toString().padLeft(2, '0')}";
+      if (_selectedTime != null && _isTimeInvalid(newDate, _selectedTime!)) {
+        _selectedTime = null;
+        _timeController.clear();
+      }
+    });
+  }
+
+  void _onDatePicked(DateTime picked) {
+    setState(() {
+      _selectedDate = picked;
+      _dateController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+      _syncDayFromDate(picked);
+      if (_selectedTime != null && _isTimeInvalid(picked, _selectedTime!)) {
+        _selectedTime = null;
+        _timeController.clear();
+      }
+    });
   }
 
   @override
@@ -184,6 +284,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
               _buildSectionTitle('Date & Timing'),
               const SizedBox(height: 12),
+              _buildDayField(),
               _buildDateField(),
               const SizedBox(height: 16),
               _buildTimeField(),
@@ -365,6 +466,56 @@ class _AddEventScreenState extends State<AddEventScreen> {
     return false;
   }
 
+  Widget _buildDayField() {
+    if (_tripDays.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.01),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: DropdownButtonFormField<int>(
+        isExpanded: true,
+        value: _selectedDayNumber,
+        decoration: const InputDecoration(
+          labelText: 'Trip Day',
+          labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          hintText: 'Select Day',
+          hintStyle: TextStyle(color: AppColors.textLight, fontSize: 13),
+          prefixIcon: Icon(Icons.event_note_outlined, color: AppColors.textSecondary, size: 18),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary),
+        dropdownColor: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        items: _tripDays.map((day) {
+          return DropdownMenuItem<int>(
+            value: day['dayNumber'] as int,
+            child: Text(
+              day['label'] as String,
+              style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+              overflow: TextOverflow.ellipsis,
+            ),
+          );
+        }).toList(),
+        onChanged: (val) {
+          if (val != null) {
+            _onDaySelected(val);
+          }
+        },
+      ),
+    );
+  }
+
   Widget _buildDateField() {
     return Container(
       decoration: BoxDecoration(
@@ -385,23 +536,37 @@ class _AddEventScreenState extends State<AddEventScreen> {
         validator: (val) => val == null || val.isEmpty ? 'Date is required' : null,
         onTap: () async {
           final DateTime now = DateTime.now();
-          // Reset time to start of day for comparison
           final DateTime today = DateTime(now.year, now.month, now.day);
+          
+          DateTime first = _tripStartDate ?? today;
+          DateTime last = _tripEndDate ?? DateTime(now.year + 5);
+
+          if (last.isBefore(first)) {
+            last = first;
+          }
+
+          DateTime initial = _selectedDate ?? today;
+          if (initial.isBefore(first)) {
+            initial = first;
+          } else if (initial.isAfter(last)) {
+            initial = last;
+          }
+
           final DateTime? picked = await showDatePicker(
             context: context,
-            initialDate: _selectedDate ?? today,
-            firstDate: today,
-            lastDate: DateTime(now.year + 5),
+            initialDate: initial,
+            firstDate: first,
+            lastDate: last,
+            selectableDayPredicate: (DateTime day) {
+              if (_tripStartDate != null && _tripEndDate != null) {
+                final d = DateTime(day.year, day.month, day.day);
+                return !d.isBefore(_tripStartDate!) && !d.isAfter(_tripEndDate!);
+              }
+              return true;
+            },
           );
           if (picked != null) {
-            setState(() {
-              _selectedDate = picked;
-              _dateController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
-              if (_selectedTime != null && _isTimeInvalid(picked, _selectedTime!)) {
-                _selectedTime = null;
-                _timeController.clear();
-              }
-            });
+            _onDatePicked(picked);
           }
         },
         style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),

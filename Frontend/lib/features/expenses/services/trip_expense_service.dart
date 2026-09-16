@@ -125,20 +125,90 @@ class TripExpenseService {
     }
   }
 
-  // 7. Create a new expense (Split bill)
-  Future<Map<String, dynamic>> createExpense(String tripId, Map<String, dynamic> data) async {
+  // 7. Create a new expense (Split bill) with optional proof receipt file
+  Future<Map<String, dynamic>> createExpenseWithFile(
+    String tripId,
+    Map<String, dynamic> data, {
+    String? filePath,
+  }) async {
     try {
       final baseUrl = await ApiEndpoints.getBaseUrl();
-      final headers = await _getHeaders();
-      final response = await http.post(
-        Uri.parse('$baseUrl/trips/$tripId/expenses'),
-        headers: headers,
-        body: jsonEncode(data),
-      );
+      final token = await _authService.getAccessToken();
+
+      final uri = Uri.parse('$baseUrl/trips/$tripId/expenses');
+      final request = http.MultipartRequest('POST', uri);
+      request.headers['Authorization'] = 'Bearer ${token ?? ''}';
+
+      data.forEach((key, value) {
+        if (value != null) {
+          if (value is Map || value is List) {
+            request.fields[key] = jsonEncode(value);
+          } else {
+            request.fields[key] = value.toString();
+          }
+        }
+      });
+
+      if (filePath != null && filePath.isNotEmpty) {
+        final filename = filePath.split(RegExp(r'[/\\]')).last;
+        final file = await http.MultipartFile.fromPath('receipt', filePath, filename: filename);
+        request.files.add(file);
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'message': 'Network error: $e'};
     }
+  }
+
+  // 7b. Update an existing expense with optional proof receipt file
+  Future<Map<String, dynamic>> updateExpenseWithFile(
+    String tripId,
+    String expenseId,
+    Map<String, dynamic> data, {
+    String? filePath,
+    bool removeReceipt = false,
+  }) async {
+    try {
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final token = await _authService.getAccessToken();
+
+      final uri = Uri.parse('$baseUrl/trips/$tripId/expenses/$expenseId');
+      final request = http.MultipartRequest('PUT', uri);
+      request.headers['Authorization'] = 'Bearer ${token ?? ''}';
+
+      data.forEach((key, value) {
+        if (value != null) {
+          if (value is Map || value is List) {
+            request.fields[key] = jsonEncode(value);
+          } else {
+            request.fields[key] = value.toString();
+          }
+        }
+      });
+
+      if (removeReceipt) {
+        request.fields['removeReceipt'] = 'true';
+      }
+
+      if (filePath != null && filePath.isNotEmpty) {
+        final filename = filePath.split(RegExp(r'[/\\]')).last;
+        final file = await http.MultipartFile.fromPath('receipt', filePath, filename: filename);
+        request.files.add(file);
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> createExpense(String tripId, Map<String, dynamic> data) async {
+    return createExpenseWithFile(tripId, data);
   }
 
   // 8. Settle participant in an expense

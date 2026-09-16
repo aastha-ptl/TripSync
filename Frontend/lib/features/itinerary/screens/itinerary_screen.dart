@@ -99,6 +99,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               'type': act['type'] ?? 'other',
               'status': act['status'] ?? 'planned',
               'cost': (act['estimatedCost'] != null && act['estimatedCost'] > 0) ? '₹${act['estimatedCost']}' : 'Free',
+              'estimatedCost': act['estimatedCost'],
               'notes': act['description'] ?? '',
             });
           }
@@ -556,40 +557,44 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on_outlined, size: 12, color: AppColors.textLight),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          activity['location'],
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
+                  if (activity['location'] != null && activity['location'].toString().trim().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined, size: 12, color: AppColors.textLight),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            activity['location'].toString(),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (activity['notes'] != null && activity['notes'].toString().trim().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        activity['notes'].toString(),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                          height: 1.4,
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text(
-                      activity['notes'],
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
+                  ],
                 ],
               ),
             ),

@@ -22,6 +22,16 @@ class ApiEndpoints {
     return '$_apiProtocol://$_pcIp:$_port/api';
   }
 
+  static String buildImageUrl(String path) {
+    if (path.isEmpty) return '';
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    final host = kIsWeb ? _localhostIp : _pcIp;
+    final cleanPath = path.startsWith('/') ? path : '/$path';
+    return '$_apiProtocol://$host:$_port$cleanPath';
+  }
+
   // Auth
   static const String login = '/auth/login';
   static const String register = '/auth/register';

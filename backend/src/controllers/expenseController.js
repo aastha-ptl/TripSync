@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import fs from "fs";
+import path from "path";
 import Expense from "../models/Expense.js";
 import ExpenseParticipant from "../models/ExpenseParticipant.js";
 import TripParticipant from "../models/TripParticipant.js";
@@ -126,16 +128,28 @@ export const createExpense = async (req, res) => {
   try {
     const { tripId } = req.params;
     const userId = req.user._id;
-    const {
-      title,
-      description = "",
-      amount,
-      currency = "INR",
-      category = "other",
-      splitType = "equal",
-      participants: rawParticipants, // array of { type: 'user'|'guest', userId, guestId, guestName, shareAmount }
-      paidBy: customPaidBy,
-    } = req.body;
+
+    let body = req.body;
+    let title = body.title;
+    let description = body.description || "";
+    let amount = body.amount;
+    let currency = body.currency || "INR";
+    let category = body.category || "other";
+    let splitType = body.splitType || "equal";
+    let dayNumber = body.dayNumber ? Number(body.dayNumber) : 1;
+    let dayTitle = body.dayTitle || "";
+    let expenseType = body.expenseType || (body.itineraryId ? "itinerary" : "other");
+    let itineraryId = (expenseType === "itinerary" && body.itineraryId && body.itineraryId !== "null" && body.itineraryId !== "undefined") ? body.itineraryId : null;
+    let estimatedAmount = (expenseType === "itinerary" && body.estimatedAmount && body.estimatedAmount !== "null" && body.estimatedAmount !== "undefined") ? Number(body.estimatedAmount) : null;
+    let rawParticipants = body.participants;
+    let customPaidBy = body.paidBy;
+
+    if (typeof rawParticipants === "string") {
+      try { rawParticipants = JSON.parse(rawParticipants); } catch (e) {}
+    }
+    if (typeof customPaidBy === "string") {
+      try { customPaidBy = JSON.parse(customPaidBy); } catch (e) {}
+    }
 
     const access = await verifyTripAccess(tripId, userId);
     if (!access) {
@@ -163,7 +177,13 @@ export const createExpense = async (req, res) => {
       return res.status(400).json({ success: false, message: "At least one participant is required" });
     }
 
-    // Validate that non-app family members can ONLY be added to splits by their own family leader
+    let receiptUrl = null;
+    if (req.file) {
+      receiptUrl = `/uploads/expenses/${tripId}/${req.file.filename}`;
+    } else if (body.receiptUrl) {
+      receiptUrl = body.receiptUrl;
+    }
+
     for (const p of rawParticipants) {
       if (p.type === "guest" || p.guestId) {
         const guestId = p.guestId || p.id;
@@ -183,7 +203,6 @@ export const createExpense = async (req, res) => {
       }
     }
 
-    // Determine who paid
     let paidByInfo = {
       type: "user",
       userId: userId,
@@ -192,7 +211,6 @@ export const createExpense = async (req, res) => {
     };
 
     if (customPaidBy && customPaidBy.type === "guest" && customPaidBy.guestId) {
-      // Validate that family leader is paying for their guest
       const family = await Family.findOne({
         tripId,
         familyLeaderId: userId,
@@ -211,7 +229,6 @@ export const createExpense = async (req, res) => {
       };
     }
 
-    // Calculate individual shares
     let participantsWithShares = [];
     const count = rawParticipants.length;
     const totalPaise = Math.round(totalAmount * 100);
@@ -223,22 +240,15 @@ export const createExpense = async (req, res) => {
       participantsWithShares = rawParticipants.map((p, idx) => {
         const addPaisa = idx < remainderPaise ? 1 : 0;
         const shareAmount = (baseSharePaise + addPaisa) / 100;
-        return {
-          ...p,
-          shareAmount,
-        };
+        return { ...p, shareAmount };
       });
     } else {
-      // Exact custom split
       let sumPaise = 0;
       participantsWithShares = rawParticipants.map((p) => {
         const share = Number(p.shareAmount || 0);
         const sharePaise = Math.round(share * 100);
         sumPaise += sharePaise;
-        return {
-          ...p,
-          shareAmount: share,
-        };
+        return { ...p, shareAmount: share };
       });
 
       if (Math.abs(sumPaise - totalPaise) > 1) {
@@ -251,19 +261,24 @@ export const createExpense = async (req, res) => {
       }
     }
 
-    // Create Expense document
     const [newExpense] = await Expense.create(
       [
         {
           tripId,
+          dayNumber,
+          dayTitle: dayTitle.trim(),
+          expenseType,
+          itineraryId,
           title: title.trim(),
           description: description.trim(),
+          estimatedAmount,
           amount: totalAmount,
           currency: currency.toUpperCase(),
           category,
           paidBy: paidByInfo,
           splitType,
           date: new Date(),
+          receiptUrl,
           status: "active",
           createdBy: userId,
         },
@@ -271,7 +286,6 @@ export const createExpense = async (req, res) => {
       { session }
     );
 
-    // Create ExpenseParticipant records
     const expenseParticipantDocs = participantsWithShares.map((p) => {
       const isUser = p.type !== "guest";
       const isPayer = isUser
@@ -282,8 +296,8 @@ export const createExpense = async (req, res) => {
         expenseId: newExpense._id,
         tripId,
         participantType: isUser ? "user" : "guest",
-        userId: isUser ? p.userId : null,
-        guestId: !isUser ? p.guestId : null,
+        userId: isUser ? (p.userId || p.id) : null,
+        guestId: !isUser ? (p.guestId || p.id) : null,
         guestName: !isUser ? p.guestName || p.name : null,
         shareAmount: p.shareAmount,
         sharePercentage: totalAmount > 0 ? (p.shareAmount / totalAmount) * 100 : 0,
@@ -308,6 +322,174 @@ export const createExpense = async (req, res) => {
     session.endSession();
     console.error("Error in createExpense:", error);
     res.status(500).json({ success: false, message: "Server error creating expense" });
+  }
+};
+
+// 2b. Update an existing expense
+export const updateExpense = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { tripId, expenseId } = req.params;
+    const userId = req.user._id;
+
+    let body = req.body;
+    let title = body.title;
+    let description = body.description || "";
+    let amount = body.amount;
+    let currency = body.currency || "INR";
+    let category = body.category || "other";
+    let splitType = body.splitType || "equal";
+    let dayNumber = body.dayNumber ? Number(body.dayNumber) : undefined;
+    let dayTitle = body.dayTitle;
+    let expenseType = body.expenseType;
+    let itineraryId = (expenseType === "itinerary" && body.itineraryId && body.itineraryId !== "null" && body.itineraryId !== "undefined") ? body.itineraryId : null;
+    let estimatedAmount = (expenseType === "itinerary" && body.estimatedAmount && body.estimatedAmount !== "null" && body.estimatedAmount !== "undefined") ? Number(body.estimatedAmount) : null;
+    let rawParticipants = body.participants;
+    let customPaidBy = body.paidBy;
+
+    if (typeof rawParticipants === "string") {
+      try { rawParticipants = JSON.parse(rawParticipants); } catch (e) {}
+    }
+    if (typeof customPaidBy === "string") {
+      try { customPaidBy = JSON.parse(customPaidBy); } catch (e) {}
+    }
+
+    const access = await verifyTripAccess(tripId, userId);
+    if (!access) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({ success: false, message: "Not a trip participant" });
+    }
+
+    const expense = await Expense.findOne({ _id: expenseId, tripId, status: "active" });
+    if (!expense) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ success: false, message: "Expense not found" });
+    }
+
+    const isCreator = expense.createdBy.toString() === userId.toString();
+    const isTripLeader = access.role === "tripLeader";
+    if (!isCreator && !isTripLeader) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({ success: false, message: "Not authorized to update this expense" });
+    }
+
+    const totalAmount = Number(amount || expense.amount);
+    if (isNaN(totalAmount) || totalAmount <= 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: "Valid positive amount is required" });
+    }
+
+    if (req.file) {
+      if (expense.receiptUrl && expense.receiptUrl.startsWith("/uploads/expenses/")) {
+        try {
+          const oldPath = path.join(process.cwd(), expense.receiptUrl);
+          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        } catch (err) {
+          console.error("Error removing old proof file:", err);
+        }
+      }
+      expense.receiptUrl = `/uploads/expenses/${tripId}/${req.file.filename}`;
+    } else if (body.removeReceipt === "true" || body.removeReceipt === true) {
+      if (expense.receiptUrl && expense.receiptUrl.startsWith("/uploads/expenses/")) {
+        try {
+          const oldPath = path.join(process.cwd(), expense.receiptUrl);
+          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        } catch (err) {
+          console.error("Error removing proof file:", err);
+        }
+      }
+      expense.receiptUrl = null;
+    }
+
+    if (title) expense.title = title.trim();
+    if (description !== undefined) expense.description = description.trim();
+    if (category) expense.category = category;
+    if (splitType) expense.splitType = splitType;
+    if (dayNumber !== undefined) expense.dayNumber = dayNumber;
+    if (dayTitle !== undefined) expense.dayTitle = dayTitle.trim();
+    if (expenseType !== undefined) expense.expenseType = expenseType;
+    expense.itineraryId = itineraryId;
+    expense.estimatedAmount = estimatedAmount;
+    expense.amount = totalAmount;
+
+    if (Array.isArray(rawParticipants) && rawParticipants.length > 0) {
+      let participantsWithShares = [];
+      const count = rawParticipants.length;
+      const totalPaise = Math.round(totalAmount * 100);
+
+      if (splitType === "equal") {
+        const baseSharePaise = Math.floor(totalPaise / count);
+        let remainderPaise = totalPaise - baseSharePaise * count;
+
+        participantsWithShares = rawParticipants.map((p, idx) => {
+          const addPaisa = idx < remainderPaise ? 1 : 0;
+          const shareAmount = (baseSharePaise + addPaisa) / 100;
+          return { ...p, shareAmount };
+        });
+      } else {
+        let sumPaise = 0;
+        participantsWithShares = rawParticipants.map((p) => {
+          const share = Number(p.shareAmount || 0);
+          const sharePaise = Math.round(share * 100);
+          sumPaise += sharePaise;
+          return { ...p, shareAmount: share };
+        });
+
+        if (Math.abs(sumPaise - totalPaise) > 1) {
+          await session.abortTransaction();
+          session.endSession();
+          return res.status(400).json({
+            success: false,
+            message: `Sum of shares (₹${(sumPaise / 100).toFixed(2)}) must equal total amount (₹${totalAmount.toFixed(2)})`,
+          });
+        }
+      }
+
+      await ExpenseParticipant.deleteMany({ expenseId: expense._id }, { session });
+
+      const expenseParticipantDocs = participantsWithShares.map((p) => {
+        const isUser = p.type !== "guest";
+        const isPayer = isUser
+          ? expense.paidBy.type === "user" && p.userId && p.userId.toString() === expense.paidBy.userId.toString()
+          : expense.paidBy.type === "guest" && p.guestId && p.guestId.toString() === expense.paidBy.guestId?.toString();
+
+        return {
+          expenseId: expense._id,
+          tripId,
+          participantType: isUser ? "user" : "guest",
+          userId: isUser ? (p.userId || p.id) : null,
+          guestId: !isUser ? (p.guestId || p.id) : null,
+          guestName: !isUser ? p.guestName || p.name : null,
+          shareAmount: p.shareAmount,
+          sharePercentage: totalAmount > 0 ? (p.shareAmount / totalAmount) * 100 : 0,
+          paidAmount: isPayer ? p.shareAmount : 0,
+          settlementStatus: isPayer ? "settled" : "pending",
+          settledAt: isPayer ? new Date() : null,
+        };
+      });
+
+      await ExpenseParticipant.insertMany(expenseParticipantDocs, { session });
+    }
+
+    await expense.save({ session });
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({
+      success: true,
+      message: "Expense updated successfully",
+      data: expense,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Error in updateExpense:", error);
+    res.status(500).json({ success: false, message: "Server error updating expense" });
   }
 };
 
@@ -1179,6 +1361,17 @@ export const deleteExpense = async (req, res) => {
 
     expense.status = "deleted";
     await expense.save();
+
+    if (expense.receiptUrl && expense.receiptUrl.startsWith("/uploads/expenses/")) {
+      try {
+        const filePath = path.join(process.cwd(), expense.receiptUrl);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (err) {
+        console.error("Error deleting proof file:", err);
+      }
+    }
 
     res.status(200).json({
       success: true,

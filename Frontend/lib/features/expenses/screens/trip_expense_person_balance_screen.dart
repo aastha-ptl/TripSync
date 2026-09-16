@@ -25,6 +25,7 @@ class _TripExpensePersonBalanceScreenState extends State<TripExpensePersonBalanc
 
   bool _isLoading = true;
   bool _isSettling = false;
+  bool _isModified = false;
   String _selectedFilter = 'unpaid'; // 'unpaid' or 'paid'
 
   Map<String, dynamic>? _targetInfo;
@@ -100,6 +101,7 @@ class _TripExpensePersonBalanceScreenState extends State<TripExpensePersonBalanc
     setState(() => _isSettling = false);
 
     if (res['success'] == true) {
+      _isModified = true;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Expenses marked as settled!'),
@@ -160,15 +162,21 @@ class _TripExpensePersonBalanceScreenState extends State<TripExpensePersonBalanc
       displayColor = const Color(0xFF0F172A);
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context, _isModified);
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+            onPressed: () => Navigator.pop(context, _isModified),
+          ),
         title: Text(
           targetName,
           style: const TextStyle(color: Color(0xFF0F172A), fontSize: 17, fontWeight: FontWeight.bold),
@@ -296,8 +304,9 @@ class _TripExpensePersonBalanceScreenState extends State<TripExpensePersonBalanc
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildFilterPill(String filterKey, String label) {
     final isSelected = _selectedFilter == filterKey;

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/constants/api_endpoints.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../profile/screens/profile_screen.dart';
 import '../services/trip_expense_service.dart';
@@ -156,7 +157,8 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
         builder: (_) => TripExpenseCreateScreen(tripData: widget.tripData),
       ),
     );
-    if (res == true) {
+    if (res == true && mounted) {
+      setState(() => _isLoading = true);
       await _fetchAllData();
       _scrollToBottom(animate: true);
     }
@@ -173,11 +175,13 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
           tripId: tripId,
           expenseId: expenseId,
           actingAsGuestId: _actingAsGuestId,
+          tripData: widget.tripData,
         ),
       ),
     );
-    if (res == true) {
-      _fetchAllData();
+    if (res == true && mounted) {
+      setState(() => _isLoading = true);
+      await _fetchAllData();
     }
   }
 
@@ -185,7 +189,7 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
     final tripId = widget.tripData?['_id'];
     if (tripId == null) return;
 
-    await Navigator.push(
+    final res = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => TripExpensePersonBalanceScreen(
@@ -196,7 +200,10 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
         ),
       ),
     );
-    _fetchAllData();
+    if ((res == true || res == null) && mounted) {
+      setState(() => _isLoading = true);
+      await _fetchAllData();
+    }
   }
 
   Future<void> _quickPayExpense(Map<String, dynamic> expense) async {
@@ -206,6 +213,7 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
     final myPartId = expense['myParticipantId'];
     if (myPartId == null) return;
 
+    setState(() => _isLoading = true);
     final res = await _expenseService.settleParticipant(
       tripId,
       expense['_id'],
@@ -220,8 +228,9 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
           backgroundColor: Color(0xFF16A34A),
         ),
       );
-      _fetchAllData();
+      await _fetchAllData();
     } else {
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(res['message'] ?? 'Failed to settle'),
@@ -504,6 +513,95 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
     return parts[0][0].toUpperCase();
   }
 
+  void _openProofViewer(String receiptUrl) {
+    final fullUrl = ApiEndpoints.buildImageUrl(receiptUrl);
+    final isPdf = receiptUrl.toLowerCase().endsWith('.pdf');
+
+    if (isPdf) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.picture_as_pdf, color: Colors.redAccent),
+              SizedBox(width: 8),
+              Text('PDF Proof Document'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'File: ${receiptUrl.split('/').last}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Tap Open PDF below to view or download the full receipt file.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final uri = Uri.parse(fullUrl);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('Open PDF'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.network(
+                  fullUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Container(
+                    padding: const EdgeInsets.all(20),
+                    color: Colors.white,
+                    child: const Text('Failed to load image proof'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
   // Segmented Sub-Tab Bar (Splits vs Expenses)
   Widget _buildTopTabBar() {
     return Container(
@@ -564,14 +662,14 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEFF6FF),
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0072FF).withValues(alpha: 0.08),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.receipt_long_outlined, size: 48, color: Color(0xFF1E5AE6)),
+                  child: const Icon(Icons.receipt_long_outlined, size: 52, color: Color(0xFF0072FF)),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 const Text(
                   'No splits created yet',
                   style: TextStyle(color: Color(0xFF0F172A), fontSize: 18, fontWeight: FontWeight.bold),
@@ -581,26 +679,13 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                   'Split bills easily with trip members',
                   style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
                 ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: _openCreateExpense,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E5AE6),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    elevation: 0,
-                  ),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Split an expense'),
-                ),
               ],
             ),
           )
         else
           RefreshIndicator(
             onRefresh: _fetchAllData,
-            color: const Color(0xFF1E5AE6),
+            color: const Color(0xFF0072FF),
             child: ListView.separated(
               controller: _splitsScrollController,
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
@@ -635,25 +720,49 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
             ),
           ),
 
-        // Bottom Sticky "Split expense" Button
+        // Bottom Sticky "Split an expense" Gradient Button
         Positioned(
           left: 20,
           right: 20,
           bottom: 16,
-          child: SizedBox(
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: _openCreateExpense,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E5AE6),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                elevation: 4,
+          child: Container(
+            height: 52,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF00C6FF), Color(0xFF0072FF)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
               ),
-              icon: const Icon(Icons.add, size: 20),
-              label: const Text(
-                'Split expense',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              borderRadius: BorderRadius.circular(26),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0072FF).withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(26),
+                onTap: _openCreateExpense,
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_rounded, color: Colors.white, size: 22),
+                    SizedBox(width: 8),
+                    Text(
+                      'Split an expense',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -662,7 +771,62 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
     );
   }
 
-  // Google Pay style interactive card styled with TripSync theme
+  Map<String, dynamic> _getCategoryStyle(String? catRaw) {
+    final cat = (catRaw ?? 'other').toString().toLowerCase();
+    switch (cat) {
+      case 'food':
+        return {
+          'color': const Color(0xFF20C060),
+          'label': 'Food',
+          'icon': Icons.restaurant_outlined,
+        };
+      case 'travel':
+        return {
+          'color': const Color(0xFF0EA5E9),
+          'label': 'Travel',
+          'icon': Icons.directions_car_outlined,
+        };
+      case 'accommodation':
+      case 'stay':
+        return {
+          'color': const Color(0xFF9333EA),
+          'label': 'Stay',
+          'icon': Icons.hotel_outlined,
+        };
+      case 'activities':
+        return {
+          'color': const Color(0xFFEC4899),
+          'label': 'Activities',
+          'icon': Icons.local_activity_outlined,
+        };
+      case 'shopping':
+        return {
+          'color': const Color(0xFFF59E0B),
+          'label': 'Shopping',
+          'icon': Icons.shopping_bag_outlined,
+        };
+      case 'tickets':
+        return {
+          'color': const Color(0xFF6366F1),
+          'label': 'Tickets',
+          'icon': Icons.confirmation_number_outlined,
+        };
+      case 'medical':
+        return {
+          'color': const Color(0xFFEF4444),
+          'label': 'Medical',
+          'icon': Icons.medical_services_outlined,
+        };
+      default:
+        return {
+          'color': const Color(0xFF0072FF),
+          'label': 'Other',
+          'icon': Icons.receipt_outlined,
+        };
+    }
+  }
+
+  // Interactive split card styled with category-specific colors and TripSync theme
   Widget _buildExpenseCard(Map<String, dynamic> exp) {
     final isCreatedByMe = exp['isCreatedByMe'] == true;
     final title = exp['title'] ?? 'Expense';
@@ -678,6 +842,11 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
     final isFullyPaid = paidCount == totalParticipants && totalParticipants > 0;
     final progress = amount > 0 ? ((amount - amountLeft) / amount).clamp(0.0, 1.0) : 0.0;
 
+    final catStyle = _getCategoryStyle(exp['category']);
+    final Color catColor = catStyle['color'] as Color;
+    final IconData catIcon = catStyle['icon'] as IconData;
+    final String catLabel = catStyle['label'] as String;
+
     final avatars = (exp['avatars'] as List? ?? []).cast<Map<String, dynamic>>();
 
     return Align(
@@ -685,23 +854,87 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
       child: GestureDetector(
         onTap: () => _openDetail(exp['_id']),
         child: Container(
-          width: MediaQuery.of(context).size.width * 0.82,
+          width: MediaQuery.of(context).size.width * 0.84,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: catColor.withValues(alpha: 0.3), width: 1.2),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
+                color: catColor.withValues(alpha: 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: catColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Day ${exp['dayNumber'] ?? 1}',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: catColor),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: catColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(catIcon, size: 11, color: catColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              catLabel,
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: catColor),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (exp['receiptUrl'] != null && exp['receiptUrl'].toString().isNotEmpty)
+                    InkWell(
+                      onTap: () => _openProofViewer(exp['receiptUrl'].toString()),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDCFCE7),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF86EFAC)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.receipt_long_outlined, size: 12, color: Color(0xFF16A34A)),
+                            SizedBox(width: 4),
+                            Text(
+                              'Proof 📎',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF16A34A), fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
               // Context Header: "Requested for 'Rent'" or "Split request"
               Text(
                 isCreatedByMe ? "Requested for '$title'" : "Split request: $title",
@@ -718,7 +951,7 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                 '₹${amount.toStringAsFixed(amount.truncateToDouble() == amount ? 0 : 2)}',
                 style: const TextStyle(
                   color: Color(0xFF0F172A),
-                  fontSize: 30,
+                  fontSize: 28,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -761,7 +994,7 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                   minHeight: 6,
                   backgroundColor: const Color(0xFFE2E8F0),
                   valueColor: AlwaysStoppedAnimation(
-                    isFullyPaid ? const Color(0xFF16A34A) : const Color(0xFF1E5AE6),
+                    isFullyPaid ? const Color(0xFF16A34A) : catColor,
                   ),
                 ),
               ),
@@ -787,7 +1020,7 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                       Icon(
                         isFullyPaid ? Icons.check_circle : Icons.access_time,
                         size: 14,
-                        color: isFullyPaid ? const Color(0xFF16A34A) : const Color(0xFF64748B),
+                        color: isFullyPaid ? const Color(0xFF16A34A) : catColor,
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -815,14 +1048,14 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                   child: ElevatedButton(
                     onPressed: () => _quickPayExpense(exp),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFEFF6FF),
-                      foregroundColor: const Color(0xFF1E5AE6),
+                      backgroundColor: catColor.withValues(alpha: 0.12),
+                      foregroundColor: catColor,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     ),
                     child: Text(
                       'Settle up ₹${userShare.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: catColor),
                     ),
                   ),
                 ),
