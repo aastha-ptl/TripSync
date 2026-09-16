@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
 import '../services/trip_service.dart';
-import  '../../../core/constants/app_constants.dart';
+import '../../../core/constants/app_constants.dart';
+import '../widgets/trip_share_link_buttons.dart';
 
 class AddTripScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
@@ -275,124 +276,100 @@ class _AddTripScreenState extends State<AddTripScreen> {
         }
 
         final inviteToken = response['data']?['inviteToken'] ?? 'Unknown token';
-        final String? _pcIp = AppConstants.pcIp;
-        final inviteLink = 'http://$_pcIp:5000/join/$inviteToken';
+        final inviteLink = AppConstants.getInviteLink(inviteToken);
         
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE6F7ED),
-                    shape: BoxShape.circle,
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE6F7ED),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check_circle,
+                      color: AppColors.secondary,
+                      size: 48,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.check_circle,
-                    color: AppColors.secondary,
-                    size: 48,
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Trip Created!',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Trip Created!',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Your new trip has been planned successfully.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Your new trip has been planned successfully.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
                   child: Column(
                     children: [
                       const Text(
                         'Invite Token',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SelectableText(
+                      const SizedBox(height: 6),
+                      Tooltip(
+                        message: 'Tap to copy token',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: inviteToken));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Invite token copied!'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                            child: Text(
                               inviteToken,
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                                letterSpacing: 0.8,
+                              ),
                               textAlign: TextAlign.center,
                             ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.copy, size: 18, color: AppColors.primary),
-                            onPressed: () {
-                              Clipboard.setData(ClipboardData(text: inviteToken));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Invite token copied!'),
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
+                        ),
                       ),
-                      if (inviteLink != null) ...[
-                        const Divider(height: 16),
-                        const Text(
-                          'Invite Link',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: SelectableText(
-                                inviteLink,
-                                style: const TextStyle(fontSize: 12, color: AppColors.primary),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.copy, size: 18, color: AppColors.primary),
-                              onPressed: () {
-                                Clipboard.setData(ClipboardData(text: inviteLink));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Invite link copied!'),
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        const SizedBox(height: 8),
-                        const Text(
-                          'No production domain configured for deep links.',
-                          style: TextStyle(fontSize: 10, color: AppColors.textLight),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                      const Divider(height: 20),
+                      const Text(
+                        'Share Invite Link',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 12),
+                      TripShareLinkButtons(inviteLink: inviteLink),
                     ],
                   ),
                 ),
@@ -416,7 +393,8 @@ class _AddTripScreenState extends State<AddTripScreen> {
               ],
             ),
           ),
-        );
+        ),
+      );
       } else {
         if (response['code'] == 'PENDING_OVERLAP') {
           _showPendingProceedDialog(context, response['tripName'] ?? 'Unknown Trip');

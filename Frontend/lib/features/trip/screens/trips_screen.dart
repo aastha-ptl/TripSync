@@ -15,6 +15,7 @@ import 'package:tripsync/core/utils/image_utils.dart';
 import 'add_trip_screen.dart';
 import '../../participants/screens/all_join_requests_screen.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../widgets/trip_share_link_buttons.dart';
 
 class TripsScreen extends StatefulWidget {
   final VoidCallback onProfileTap;
@@ -525,102 +526,91 @@ class _TripsScreenState extends State<TripsScreen> {
                                 padding: EdgeInsets.zero,
                                 onSelected: (value) async {
                                   if (value == 'share') {
-                                    final inviteToken = trip['inviteToken'] ?? '';
-                                    final pcIp = AppConstants.pcIp;
-                                    final inviteLink = 'http://$pcIp:5000/join/$inviteToken';
+                                     final inviteToken = trip['inviteToken'] ?? '';
+                                     final inviteLink = AppConstants.getInviteLink(inviteToken);
                                     showDialog(
                                       context: context,
                                       builder: (context) => AlertDialog(
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                        content: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const SizedBox(height: 16),
-                                            const Text(
-                                              'Share Trip',
-                                              style: TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                                color: AppColors.textPrimary,
+                                        content: SizedBox(
+                                          width: double.maxFinite,
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const SizedBox(height: 16),
+                                              const Text(
+                                                'Share Trip',
+                                                style: TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppColors.textPrimary,
+                                                ),
                                               ),
-                                            ),
-                                            const SizedBox(height: 16),
-                                            Container(
-                                              padding: const EdgeInsets.all(12),
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey[100],
-                                                borderRadius: BorderRadius.circular(8),
-                                                border: Border.all(color: Colors.grey[300]!),
-                                              ),
-                                              child: Column(
-                                                children: [
-                                                  const Text(
-                                                    'Invite Token',
-                                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    children: [
-                                                      Expanded(
-                                                        child: SelectableText(
-                                                          inviteToken,
-                                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
-                                                          textAlign: TextAlign.center,
-                                                        ),
-                                                      ),
-                                                      IconButton(
-                                                        icon: const Icon(Icons.copy, size: 18, color: AppColors.primary),
-                                                        onPressed: () {
+                                              const SizedBox(height: 16),
+                                              Container(
+                                                width: double.infinity,
+                                                padding: const EdgeInsets.all(12),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey[100],
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  border: Border.all(color: Colors.grey[300]!),
+                                                ),
+                                                child: Column(
+                                                  children: [
+                                                    const Text(
+                                                      'Invite Token',
+                                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Tooltip(
+                                                      message: 'Tap to copy token',
+                                                      child: InkWell(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        onTap: () {
                                                           Clipboard.setData(ClipboardData(text: inviteToken));
                                                           ScaffoldMessenger.of(context).showSnackBar(
                                                             const SnackBar(content: Text('Invite token copied!')),
                                                           );
                                                         },
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  const Divider(height: 16),
-                                                  const Text(
-                                                    'Invite Link',
-                                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    children: [
-                                                      Expanded(
-                                                        child: SelectableText(
-                                                          inviteLink,
-                                                          style: const TextStyle(fontSize: 12, color: AppColors.primary),
-                                                          textAlign: TextAlign.center,
+                                                        child: Padding(
+                                                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                                                          child: Text(
+                                                            inviteToken,
+                                                            style: const TextStyle(
+                                                              fontSize: 16,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: AppColors.primary,
+                                                              letterSpacing: 0.8,
+                                                            ),
+                                                            textAlign: TextAlign.center,
+                                                          ),
                                                         ),
                                                       ),
-                                                      IconButton(
-                                                        icon: const Icon(Icons.copy, size: 18, color: AppColors.primary),
-                                                        onPressed: () {
-                                                          Clipboard.setData(ClipboardData(text: inviteLink));
-                                                          ScaffoldMessenger.of(context).showSnackBar(
-                                                            const SnackBar(content: Text('Invite link copied!')),
-                                                          );
-                                                        },
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(height: 16),
-                                            ElevatedButton(
-                                              onPressed: () => Navigator.pop(context),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: AppColors.primary,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(12),
+                                                    ),
+                                                    const Divider(height: 20),
+                                                    const Text(
+                                                      'Share Invite Link',
+                                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                                    ),
+                                                    const SizedBox(height: 12),
+                                                    TripShareLinkButtons(inviteLink: inviteLink),
+                                                  ],
                                                 ),
-                                                minimumSize: const Size(double.infinity, 45),
                                               ),
-                                              child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                            ),
-                                          ],
+                                              const SizedBox(height: 16),
+                                              ElevatedButton(
+                                                onPressed: () => Navigator.pop(context),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.primary,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(12),
+                                                  ),
+                                                  minimumSize: const Size(double.infinity, 45),
+                                                ),
+                                                child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     );
