@@ -24,11 +24,12 @@ class ApiEndpoints {
 
   static String buildImageUrl(String path) {
     if (path.isEmpty) return '';
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
+    final normalized = path.replaceAll('\\', '/');
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+      return normalized;
     }
     final host = kIsWeb ? _localhostIp : _pcIp;
-    final cleanPath = path.startsWith('/') ? path : '/$path';
+    final cleanPath = normalized.startsWith('/') ? normalized : '/$normalized';
     return '$_apiProtocol://$host:$_port$cleanPath';
   }
 

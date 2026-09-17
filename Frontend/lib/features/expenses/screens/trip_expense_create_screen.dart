@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/utils/date_formatter.dart';
@@ -188,6 +189,14 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
         {'dayNumber': 1, 'label': 'Day 1', 'date': DateTime.now()}
       ];
     }
+  }
+
+  String _toTitleCase(String? text) {
+    if (text == null || text.trim().isEmpty) return '';
+    return text.trim().split(RegExp(r'\s+')).map((word) {
+      if (word.isEmpty) return '';
+      return word[0].toUpperCase() + (word.length > 1 ? word.substring(1).toLowerCase() : '');
+    }).join(' ');
   }
 
   void _updateActivitiesForDay(int dayNum) {
@@ -433,8 +442,8 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
           'type': m['type'],
           'userId': m['userId'],
           'guestId': m['guestId'],
-          'guestName': m['type'] == 'guest' ? m['name'] : null,
-          'name': m['name'],
+          'guestName': m['type'] == 'guest' ? (m['actualName'] ?? m['name']) : null,
+          'name': m['actualName'] ?? m['name'],
           'shareAmount': share,
         });
       }
@@ -1208,6 +1217,9 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
               final key = member['id'];
               final isSelected = _selectedMembers[key] ?? false;
               final isCurrentUser = member['isCurrentUser'] == true;
+              final isFamilyMember = member['isFamilyMember'] == true;
+              final leaderName = member['leaderName']?.toString().trim();
+              final displayName = isCurrentUser ? 'You' : (member['name'] ?? 'User').toString();
 
               return Row(
                 children: [
@@ -1233,16 +1245,33 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
                     backgroundImage: member['avatar'] != null ? NetworkImage(member['avatar']) : null,
                     child: member['avatar'] == null
                         ? Text(
-                            (member['name'] as String).isNotEmpty ? member['name'][0].toUpperCase() : 'M',
+                            displayName.isNotEmpty ? displayName[0].toUpperCase() : 'M',
                             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
                           )
                         : null,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      isCurrentUser ? 'You' : member['name'],
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          displayName,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                        ),
+                        if (isFamilyMember && leaderName != null && leaderName.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Family Leader: ${_toTitleCase(leaderName)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   SizedBox(
@@ -1285,7 +1314,57 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
 
   bool _isPdfPath(String? path) {
     if (path == null) return false;
-    return path.toLowerCase().endsWith('.pdf');
+    return path.toLowerCase().contains('.pdf');
+  }
+
+  Future<void> _openLocalOrRemotePdf({String? localPath, String? remoteUrl}) async {
+    try {
+      Uri? uri;
+      if (localPath != null && localPath.isNotEmpty) {
+        uri = Uri.file(localPath);
+      } else if (remoteUrl != null && remoteUrl.isNotEmpty) {
+        final cleanUrl = remoteUrl.trim().replaceAll('\\', '/');
+        final fullUrl = ApiEndpoints.buildImageUrl(cleanUrl);
+        uri = Uri.parse(fullUrl);
+      }
+
+      if (uri == null) return;
+
+      bool launched = false;
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+
+      if (!launched) {
+        try {
+          launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+        } catch (_) {}
+      }
+
+      if (!launched) {
+        try {
+          launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+        } catch (_) {}
+      }
+
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open PDF file'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening PDF: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
   }
 
   void _showReplaceProofBottomSheet() {
@@ -1353,38 +1432,49 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
         children: [
           if (_proofFile != null || (_existingReceiptUrl != null && !_removeReceipt)) ...[
             if (isLocalPdf || isExistingPdf) ...[
-              Container(
-                height: 120,
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF2F2),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFFCA5A5)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.picture_as_pdf, size: 44, color: Color(0xFFDC2626)),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _proofFile != null
-                                ? _proofFile!.path.split(Platform.pathSeparator).last
-                                : _existingReceiptUrl!.split('/').last,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          const Text('PDF Document attached', style: TextStyle(fontSize: 11, color: Color(0xFFDC2626), fontWeight: FontWeight.bold)),
-                        ],
+              InkWell(
+                onTap: () {
+                  if (_proofFile != null) {
+                    _openLocalOrRemotePdf(localPath: _proofFile!.path);
+                  } else if (_existingReceiptUrl != null) {
+                    _openLocalOrRemotePdf(remoteUrl: _existingReceiptUrl);
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 120,
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.picture_as_pdf, size: 44, color: Color(0xFFDC2626)),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _proofFile != null
+                                  ? _proofFile!.path.split(Platform.pathSeparator).last
+                                  : _existingReceiptUrl!.split('/').last,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            const Text('PDF Document attached (Tap to view)', style: TextStyle(fontSize: 11, color: Color(0xFFDC2626), fontWeight: FontWeight.bold)),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      const Icon(Icons.open_in_new, size: 18, color: Color(0xFFDC2626)),
+                    ],
+                  ),
                 ),
               ),
             ] else ...[
@@ -1407,6 +1497,26 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
             const SizedBox(height: 12),
             Row(
               children: [
+                if (isLocalPdf || isExistingPdf) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        if (_proofFile != null) {
+                          _openLocalOrRemotePdf(localPath: _proofFile!.path);
+                        } else if (_existingReceiptUrl != null) {
+                          _openLocalOrRemotePdf(remoteUrl: _existingReceiptUrl);
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFDC2626),
+                        side: const BorderSide(color: Color(0xFFFCA5A5)),
+                      ),
+                      icon: const Icon(Icons.visibility_outlined, size: 16),
+                      label: const Text('View PDF'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _showReplaceProofBottomSheet,
@@ -1414,7 +1524,7 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
                     label: const Text('Replace'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () {

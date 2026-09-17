@@ -119,6 +119,14 @@ class _TripExpensePersonBalanceScreenState extends State<TripExpensePersonBalanc
     }
   }
 
+  String _toTitleCase(String? text) {
+    if (text == null || text.trim().isEmpty) return '';
+    return text.trim().split(RegExp(r'\s+')).map((word) {
+      if (word.isEmpty) return '';
+      return word[0].toUpperCase() + (word.length > 1 ? word.substring(1).toLowerCase() : '');
+    }).join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -130,6 +138,8 @@ class _TripExpensePersonBalanceScreenState extends State<TripExpensePersonBalanc
 
     final targetName = _targetInfo?['name'] ?? 'Member';
     final avatarUrl = _targetInfo?['avatar'];
+    final isFamilyMember = _targetInfo?['isFamilyMember'] == true;
+    final leaderName = _targetInfo?['leaderName']?.toString().trim();
     final selectedNetTotal = _calculateSelectedNetTotal();
 
     final String displayTitle;
@@ -215,6 +225,25 @@ class _TripExpensePersonBalanceScreenState extends State<TripExpensePersonBalanc
                               )
                             : null,
                       ),
+                      if (isFamilyMember && leaderName != null && leaderName.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                          ),
+                          child: Text(
+                            'Family Leader: ${_toTitleCase(leaderName)}',
+                            style: const TextStyle(
+                              color: Color(0xFF1E5AE6),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 14),
 
                       // Title: dynamically reflects selection (e.g. "You owe Aarohi Patel" or "Aarohi Patel owes you")

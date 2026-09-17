@@ -15,8 +15,19 @@ app.use(
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use(
+  '/uploads/expenses',
+  express.static(path.join(process.cwd(), 'uploads/expenses'), {
+    setHeaders: (res, filePath) => {
+      if (filePath.toLowerCase().endsWith('.pdf')) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
+      }
+    },
+  })
+);
 app.use('/uploads/documents', express.static(path.join(process.cwd(), 'uploads/documents')));
-app.use('/uploads/expenses', express.static(path.join(process.cwd(), 'uploads/expenses')));
 
 app.get("/", (req, res) => {
   res.status(200).json({

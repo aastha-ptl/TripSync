@@ -513,9 +513,60 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
     return parts[0][0].toUpperCase();
   }
 
+  String _toTitleCase(String? text) {
+    if (text == null || text.trim().isEmpty) return '';
+    return text.trim().split(RegExp(r'\s+')).map((word) {
+      if (word.isEmpty) return '';
+      return word[0].toUpperCase() + (word.length > 1 ? word.substring(1).toLowerCase() : '');
+    }).join(' ');
+  }
+
+  Future<void> _openPdfUrl(String rawUrl) async {
+    try {
+      final cleanUrl = rawUrl.trim().replaceAll('\\', '/');
+      final fullUrl = ApiEndpoints.buildImageUrl(cleanUrl);
+      final uri = Uri.parse(fullUrl);
+
+      bool launched = false;
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+
+      if (!launched) {
+        try {
+          launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+        } catch (_) {}
+      }
+
+      if (!launched) {
+        try {
+          launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+        } catch (_) {}
+      }
+
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open PDF: $fullUrl'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening PDF: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
   void _openProofViewer(String receiptUrl) {
     final fullUrl = ApiEndpoints.buildImageUrl(receiptUrl);
-    final isPdf = receiptUrl.toLowerCase().endsWith('.pdf');
+    final isPdf = receiptUrl.toLowerCase().contains('.pdf');
 
     if (isPdf) {
       showDialog(
@@ -550,12 +601,9 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
               child: const Text('Close'),
             ),
             ElevatedButton.icon(
-              onPressed: () async {
+              onPressed: () {
                 Navigator.pop(ctx);
-                final uri = Uri.parse(fullUrl);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
+                _openPdfUrl(receiptUrl);
               },
               icon: const Icon(Icons.open_in_new, size: 16),
               label: const Text('Open PDF'),
@@ -1356,6 +1404,9 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
     final unpaidCount = person['unpaidCount'] ?? 0;
     final expensesCount = person['expensesCount'] ?? 0;
 
+    final isFamilyMember = person['isFamilyMember'] == true;
+    final leaderName = person['leaderName']?.toString().trim();
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1393,6 +1444,17 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (isFamilyMember && leaderName != null && leaderName.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Family Leader: ${_toTitleCase(leaderName)}',
+                        style: const TextStyle(
+                          color: Color(0xFF1E5AE6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 2),
                     Text(
                       isSettled

@@ -64,6 +64,57 @@ class _TripExpenseDetailScreenState extends State<TripExpenseDetailScreen> {
     }
   }
 
+  String _toTitleCase(String? text) {
+    if (text == null || text.trim().isEmpty) return '';
+    return text.trim().split(RegExp(r'\s+')).map((word) {
+      if (word.isEmpty) return '';
+      return word[0].toUpperCase() + (word.length > 1 ? word.substring(1).toLowerCase() : '');
+    }).join(' ');
+  }
+
+  Future<void> _openPdfUrl(String rawUrl) async {
+    try {
+      final cleanUrl = rawUrl.trim().replaceAll('\\', '/');
+      final fullUrl = ApiEndpoints.buildImageUrl(cleanUrl);
+      final uri = Uri.parse(fullUrl);
+
+      bool launched = false;
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+
+      if (!launched) {
+        try {
+          launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+        } catch (_) {}
+      }
+
+      if (!launched) {
+        try {
+          launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+        } catch (_) {}
+      }
+
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open PDF: $fullUrl'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening PDF: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _settleSelf(String participantId) async {
     setState(() => _isSettling = true);
     final res = await _expenseService.settleParticipant(
@@ -411,59 +462,57 @@ class _TripExpenseDetailScreenState extends State<TripExpenseDetailScreen> {
                           ),
                           const SizedBox(height: 12),
                           if (receiptUrl != null && receiptUrl.toString().isNotEmpty) ...[
-                            if (receiptUrl.toString().toLowerCase().endsWith('.pdf')) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFEF2F2),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: const Color(0xFFFCA5A5)),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.picture_as_pdf, size: 40, color: Color(0xFFDC2626)),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                receiptUrl.toString().split('/').last,
-                                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              const SizedBox(height: 2),
-                                              const Text('PDF Receipt Document', style: TextStyle(fontSize: 11, color: Color(0xFFDC2626))),
-                                            ],
+                            if (receiptUrl.toString().toLowerCase().contains('.pdf')) ...[
+                              InkWell(
+                                onTap: () => _openPdfUrl(receiptUrl.toString()),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.picture_as_pdf, size: 40, color: Color(0xFFDC2626)),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  receiptUrl.toString().split('/').last,
+                                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                                const SizedBox(height: 2),
+                                                const Text('PDF Receipt Document (Tap to open)', style: TextStyle(fontSize: 11, color: Color(0xFFDC2626))),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton.icon(
-                                        onPressed: () async {
-                                          final fullUrl = ApiEndpoints.buildImageUrl(receiptUrl.toString());
-                                          final uri = Uri.parse(fullUrl);
-                                          if (await canLaunchUrl(uri)) {
-                                            await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                          }
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFFDC2626),
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        ),
-                                        icon: const Icon(Icons.open_in_new, size: 16),
-                                        label: const Text('View / Open PDF Proof', style: TextStyle(fontWeight: FontWeight.bold)),
+                                        ],
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 12),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton.icon(
+                                          onPressed: () => _openPdfUrl(receiptUrl.toString()),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFFDC2626),
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          ),
+                                          icon: const Icon(Icons.open_in_new, size: 16),
+                                          label: const Text('View / Open PDF Proof', style: TextStyle(fontWeight: FontWeight.bold)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ] else ...[
@@ -565,13 +614,24 @@ class _TripExpenseDetailScreenState extends State<TripExpenseDetailScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      p['isCurrentUser'] == true ? 'You' : p['name'],
+                                      p['isCurrentUser'] == true ? 'You' : (p['name'] ?? 'User'),
                                       style: const TextStyle(
                                         color: AppColors.textPrimary,
                                         fontSize: 15,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
+                                    if (p['leaderName'] != null && p['leaderName'].toString().trim().isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Family Leader: ${_toTitleCase(p['leaderName'].toString())}',
+                                        style: const TextStyle(
+                                          color: Color(0xFF1E5AE6),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 2),
                                     Text(
                                       isCreator
