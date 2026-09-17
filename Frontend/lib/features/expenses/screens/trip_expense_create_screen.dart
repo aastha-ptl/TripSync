@@ -42,7 +42,10 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
   List<Map<String, dynamic>> _allItineraryDaysData = [];
   List<Map<String, dynamic>> _currentDayActivities = [];
   String? _selectedActivityId; // null (Select Activity hint), 'other', or activity _id
-  double? _estimatedAmount;
+  double? _estimatedAmount; // Total estimated amount for the expense
+  double? _activityEstimatedPerPerson; // Base per-person cost from itinerary
+  bool _isEstimatedPerPerson = true; // Default: itinerary cost is per person
+  bool _hasUserManuallyChangedAmount = false; // Tracks if user typed custom actual amount
 
   // Category
   String _selectedCategory = 'food';
@@ -143,6 +146,7 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
         if (exp['expenseType'] == 'itinerary' && exp['itineraryId'] != null) {
           _selectedActivityId = exp['itineraryId'].toString();
           _estimatedAmount = exp['estimatedAmount'] != null ? (exp['estimatedAmount'] as num).toDouble() : null;
+          _hasUserManuallyChangedAmount = true;
         } else {
           _selectedActivityId = 'other';
         }
@@ -216,14 +220,37 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
       if (widget.existingExpense == null) {
         _selectedActivityId = null;
         _estimatedAmount = null;
+        _activityEstimatedPerPerson = null;
       } else if (_selectedActivityId != 'other' && _selectedActivityId != null) {
         final exists = _currentDayActivities.any((a) => a['_id'] == _selectedActivityId);
         if (!exists) {
           _selectedActivityId = 'other';
           _estimatedAmount = null;
+          _activityEstimatedPerPerson = null;
+        } else {
+          final act = _currentDayActivities.firstWhere((a) => a['_id'] == _selectedActivityId, orElse: () => {});
+          _activityEstimatedPerPerson = act['estimatedCost'];
         }
       }
     });
+  }
+
+  void _syncEstimatedAndActualAmount({bool forceUpdateActual = false}) {
+    if (_selectedActivityId == null || _selectedActivityId == 'other' || _activityEstimatedPerPerson == null || _activityEstimatedPerPerson! <= 0) {
+      if (_selectedActivityId == 'other') {
+        _estimatedAmount = null;
+      }
+      return;
+    }
+
+    final selectedCount = _selectedMembers.values.where((v) => v).length;
+    final multiplier = _isEstimatedPerPerson ? (selectedCount > 0 ? selectedCount : 1) : 1;
+    _estimatedAmount = _activityEstimatedPerPerson! * multiplier;
+
+    if (forceUpdateActual || !_hasUserManuallyChangedAmount || _amountController.text.trim().isEmpty) {
+      _amountController.text = _estimatedAmount!.toStringAsFixed(0);
+      _recalculateEqualSplit();
+    }
   }
 
   void _onActivityChanged(String? val) {
@@ -232,18 +259,32 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
       _selectedActivityId = val;
       if (val == 'other') {
         _estimatedAmount = null;
+        _activityEstimatedPerPerson = null;
         if (widget.existingExpense == null || widget.existingExpense!['expenseType'] != 'other') {
           _titleController.clear();
         }
       } else {
         final act = _currentDayActivities.firstWhere((a) => a['_id'] == val, orElse: () => {});
         _titleController.text = act['title'] ?? '';
-        _estimatedAmount = act['estimatedCost'];
+        _activityEstimatedPerPerson = act['estimatedCost'];
 
-        if (_amountController.text.isEmpty && _estimatedAmount != null && _estimatedAmount! > 0) {
-          _amountController.text = _estimatedAmount!.toStringAsFixed(0);
-          _recalculateEqualSplit();
+        // Automatically select matching category if applicable
+        final actType = act['type']?.toString().toLowerCase();
+        if (actType != null) {
+          if (actType == 'transport') {
+            _selectedCategory = 'travel';
+          } else if (actType == 'lodging') {
+            _selectedCategory = 'accommodation';
+          } else if (actType == 'food') {
+            _selectedCategory = 'food';
+          } else if (actType == 'sightseeing') {
+            _selectedCategory = 'activities';
+          } else if (_categories.any((c) => c['id'] == actType)) {
+            _selectedCategory = actType;
+          }
         }
+
+        _syncEstimatedAndActualAmount(forceUpdateActual: true);
       }
     });
   }
@@ -667,7 +708,8 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
         borderRadius: BorderRadius.circular(16),
         items: [
           ..._currentDayActivities.map((act) {
-            final estStr = act['estimatedCost'] != null ? ' (Est: ₹${act['estimatedCost']})' : '';
+            final estCost = act['estimatedCost'];
+            final estStr = estCost != null ? ' (Est: ₹${(estCost as num).toStringAsFixed(0)}/person)' : '';
             return DropdownMenuItem<String>(
               value: act['_id'] as String,
               child: Text(
@@ -776,6 +818,7 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
 
   Widget _buildActualAmountSection() {
     final actualAmount = double.tryParse(_amountController.text.trim()) ?? 0.0;
+    final selectedCount = _selectedMembers.values.where((v) => v).length;
 
     String? diffText;
     Color diffColor = Colors.grey;
@@ -804,6 +847,11 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
       diffText = 'Estimated: Not applicable';
     }
 
+    final hasActivityCost = _selectedActivityId != null &&
+        _selectedActivityId != 'other' &&
+        _activityEstimatedPerPerson != null &&
+        _activityEstimatedPerPerson! > 0;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -821,42 +869,158 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Estimated info reference
+          // Estimated info reference & difference
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(
-                  _selectedActivityId != 'other'
-                      ? 'Estimated: ${_estimatedAmount != null && _estimatedAmount! > 0 ? "₹${_estimatedAmount!.toStringAsFixed(0)}" : "N/A"}'
-                      : 'Estimated: Not applicable',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (diffText != null) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: diffColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(diffIcon, size: 12, color: diffColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        diffText,
-                        style: TextStyle(color: diffColor, fontSize: 11, fontWeight: FontWeight.bold),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _selectedActivityId != 'other'
+                          ? 'Estimated: ${_estimatedAmount != null && _estimatedAmount! > 0 ? "₹${_estimatedAmount!.toStringAsFixed(0)}" : "N/A"}'
+                          : 'Estimated: Not applicable',
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (hasActivityCost) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          const Icon(Icons.people_outline, size: 13, color: AppColors.textSecondary),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              _isEstimatedPerPerson
+                                  ? '₹${_activityEstimatedPerPerson!.toStringAsFixed(0)} / person × $selectedCount participants'
+                                  : 'Fixed group total (₹${_activityEstimatedPerPerson!.toStringAsFixed(0)})',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: diffColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(diffIcon, size: 12, color: diffColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      diffText,
+                      style: TextStyle(color: diffColor, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // Estimation mode toggle chips (Per person vs fixed total)
+          if (hasActivityCost) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    if (!_isEstimatedPerPerson) {
+                      setState(() {
+                        _isEstimatedPerPerson = true;
+                        _syncEstimatedAndActualAmount(forceUpdateActual: !_hasUserManuallyChangedAmount);
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: _isEstimatedPerPerson ? AppColors.primary.withOpacity(0.12) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _isEstimatedPerPerson ? AppColors.primary : const Color(0xFFCBD5E1),
+                        width: _isEstimatedPerPerson ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_isEstimatedPerPerson) ...[
+                          const Icon(Icons.check, size: 12, color: AppColors.primary),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(
+                          'Per Person (₹${(_activityEstimatedPerPerson! * (selectedCount > 0 ? selectedCount : 1)).toStringAsFixed(0)})',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: _isEstimatedPerPerson ? FontWeight.bold : FontWeight.w500,
+                            color: _isEstimatedPerPerson ? AppColors.primary : AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () {
+                    if (_isEstimatedPerPerson) {
+                      setState(() {
+                        _isEstimatedPerPerson = false;
+                        _syncEstimatedAndActualAmount(forceUpdateActual: !_hasUserManuallyChangedAmount);
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: !_isEstimatedPerPerson ? AppColors.primary.withOpacity(0.12) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: !_isEstimatedPerPerson ? AppColors.primary : const Color(0xFFCBD5E1),
+                        width: !_isEstimatedPerPerson ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!_isEstimatedPerPerson) ...[
+                          const Icon(Icons.check, size: 12, color: AppColors.primary),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(
+                          'Fixed Total (₹${_activityEstimatedPerPerson!.toStringAsFixed(0)})',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: !_isEstimatedPerPerson ? FontWeight.bold : FontWeight.w500,
+                            color: !_isEstimatedPerPerson ? AppColors.primary : AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
-            ],
-          ),
+            ),
+          ],
           const SizedBox(height: 14),
 
           // Actual Amount Input Field
@@ -867,16 +1031,31 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
             ],
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Actual Amount Spent (₹)',
-              labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              labelStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
               hintText: 'e.g. 750',
-              prefixIcon: Icon(Icons.currency_rupee, color: AppColors.primary, size: 22),
-              border: OutlineInputBorder(
+              prefixIcon: const Icon(Icons.currency_rupee, color: AppColors.primary, size: 22),
+              suffixIcon: (_hasUserManuallyChangedAmount && _estimatedAmount != null && _estimatedAmount! > 0)
+                  ? TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _hasUserManuallyChangedAmount = false;
+                          _amountController.text = _estimatedAmount!.toStringAsFixed(0);
+                          if (!_isCustomSplit) {
+                            _recalculateEqualSplit();
+                          }
+                        });
+                      },
+                      child: const Text('Reset', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                    )
+                  : null,
+              border: const OutlineInputBorder(
                 borderRadius: BorderRadius.all(Radius.circular(12)),
               ),
             ),
             onChanged: (_) {
+              _hasUserManuallyChangedAmount = true;
               if (!_isCustomSplit) {
                 _recalculateEqualSplit();
               }
@@ -1039,6 +1218,9 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
                     onChanged: (val) {
                       setState(() {
                         _selectedMembers[key] = val ?? false;
+                        if (_selectedActivityId != null && _selectedActivityId != 'other' && _activityEstimatedPerPerson != null) {
+                          _syncEstimatedAndActualAmount(forceUpdateActual: !_hasUserManuallyChangedAmount);
+                        }
                         if (!_isCustomSplit) {
                           _recalculateEqualSplit();
                         }

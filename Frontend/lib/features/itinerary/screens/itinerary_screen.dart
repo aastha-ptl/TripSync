@@ -98,7 +98,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               'location': act['location']?['name'] ?? '',
               'type': act['type'] ?? 'other',
               'status': act['status'] ?? 'planned',
-              'cost': (act['estimatedCost'] != null && act['estimatedCost'] > 0) ? '₹${act['estimatedCost']}' : 'Free',
+              'cost': (act['estimatedCost'] != null && act['estimatedCost'] > 0) ? '₹${act['estimatedCost']}/person' : 'Free',
               'estimatedCost': act['estimatedCost'],
               'notes': act['description'] ?? '',
             });

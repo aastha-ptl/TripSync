@@ -83,7 +83,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _timeController.text = activity['time'] ?? '';
       final rawCost = activity['estimatedCost'] ?? activity['cost'];
       if (rawCost != null) {
-        String costStr = rawCost.toString().replaceAll('₹', '').trim();
+        String costStr = rawCost.toString().replaceAll('₹', '').replaceAll('/person', '').trim();
         if (costStr.toLowerCase() == 'free') {
           costStr = '';
         }
@@ -294,9 +294,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
               const SizedBox(height: 12),
               _buildInputField(
                 controller: _costController,
-                label: 'Estimated Cost',
-                hint: 'e.g. €25, Free, ₹1,200',
-                icon: Icons.euro_symbol_outlined,
+                label: 'Estimated Cost (per person)',
+                hint: 'e.g. 3000, Free',
+                icon: Icons.currency_rupee,
               ),
               const SizedBox(height: 16),
               _buildInputField(
