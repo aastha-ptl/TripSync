@@ -493,27 +493,34 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                         children: [
                           _buildStatusBadge(activity['status']),
                           const SizedBox(width: 6),
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                if (activity['status'] == 'completed') {
-                                  activity['status'] = 'upcoming';
-                                } else {
-                                  activity['status'] = 'completed';
-                                }
-                              });
-                            },
-                            child: Icon(
-                              activity['status'] == 'completed'
-                                  ? Icons.check_circle
-                                  : Icons.radio_button_unchecked,
-                              size: 18,
-                              color: activity['status'] == 'completed'
-                                  ? const Color(0xFF20C060)
-                                  : const Color(0xFF94A3B8),
-                            ),
-                          ),
                           if (!widget.isSoloTraveler) ...[
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () async {
+                                final newStatus = activity['status'] == 'completed' ? 'planned' : 'completed';
+                                setState(() {
+                                  activity['status'] = newStatus;
+                                });
+                                final tripId = widget.tripData?['_id'];
+                                final activityId = activity['_id'];
+                                if (tripId != null && activityId != null) {
+                                  await _itineraryService.updateActivity(tripId, activityId, {
+                                    'status': newStatus,
+                                    'title': activity['title'],
+                                    'date': (activity['rawDate'] as DateTime).toIso8601String(),
+                                  });
+                                }
+                              },
+                              child: Icon(
+                                activity['status'] == 'completed'
+                                    ? Icons.check_circle
+                                    : Icons.radio_button_unchecked,
+                                size: 18,
+                                color: activity['status'] == 'completed'
+                                    ? const Color(0xFF20C060)
+                                    : const Color(0xFF94A3B8),
+                              ),
+                            ),
                             const SizedBox(width: 2),
                             SizedBox(
                               width: 24,

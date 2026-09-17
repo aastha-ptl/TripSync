@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../profile/services/user_service.dart';
+import '../../trip/services/trip_service.dart';
+import '../services/trip_expense_service.dart';
 import '../../../core/widgets/custom_app_bar.dart';
 
 class ExpenseScreen extends StatefulWidget {
@@ -20,107 +23,50 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
   bool _showAllNeedToPay = false;
   bool _showAllNeedsToPayYou = false;
 
-  final List<Map<String, dynamic>> _tripDetailsData = [
-    {
-      'name': 'Paris Getaway',
-      'date': 'May 20 - May 27, 2025',
-      'total': '₹45,230',
-      'totalSub': '35% of total',
-      'mine': '₹18,400',
-      'pay': '₹5,230',
-      'receive': '₹2,150',
-      'status': 'Active',
-      'isActive': true,
-    },
-    {
-      'name': 'Bali Adventure',
-      'date': 'Jun 10 - Jun 18, 2025',
-      'total': '₹38,450',
-      'totalSub': '30% of total',
-      'mine': '₹20,600',
-      'pay': '₹3,850',
-      'receive': '₹1,200',
-      'status': 'Active',
-      'isActive': true,
-    },
-    {
-      'name': 'New York Trip',
-      'date': 'Apr 05 - Apr 12, 2025',
-      'total': '₹28,760',
-      'totalSub': '22% of total',
-      'mine': '₹12,300',
-      'pay': '₹2,760',
-      'receive': '₹1,450',
-      'status': 'Completed',
-      'isActive': false,
-    },
-    {
-      'name': 'Switzerland Trip',
-      'date': 'Mar 15 - Mar 22, 2025',
-      'total': '₹15,340',
-      'totalSub': '12% of total',
-      'mine': '₹11,130',
-      'pay': '₹910',
-      'receive': '₹3,430',
-      'status': 'Completed',
-      'isActive': false,
-    },
-    {
-      'name': 'Greece Escape',
-      'date': 'Jul 12 - Jul 20, 2025',
-      'total': '₹18,250',
-      'totalSub': '14% of total',
-      'mine': '₹10,500',
-      'pay': '₹2,100',
-      'receive': '₹3,200',
-      'status': 'Completed',
-      'isActive': false,
-    },
-    {
-      'name': 'Dubai Trip',
-      'date': 'Aug 18 - Aug 25, 2025',
-      'total': '₹31,400',
-      'totalSub': '24% of total',
-      'mine': '₹15,800',
-      'pay': '₹4,120',
-      'receive': '₹1,850',
-      'status': 'Completed',
-      'isActive': false,
-    },
-  ];
+  bool _isLoading = true;
 
-  final List<Map<String, dynamic>> _needToPayData = [
-    {'name': 'Aman Verma', 'amount': '₹6,200', 'color': Color(0xFFEF4444)},
-    {'name': 'Pooja Shah', 'amount': '₹5,150', 'color': Color(0xFFEF4444)},
-    {'name': 'Karan Joshi', 'amount': '₹4,200', 'color': Color(0xFFEF4444)},
-    {'name': 'Rohan Das', 'amount': '₹2,100', 'color': Color(0xFFEF4444)},
-    {'name': 'Sonia Sen', 'amount': '₹1,100', 'color': Color(0xFFEF4444)},
-  ];
+  List<Map<String, dynamic>> _userTrips = [];
+  List<Map<String, dynamic>> _tripDetailsData = [];
+  List<Map<String, dynamic>> _needToPayData = [];
+  List<Map<String, dynamic>> _needsToPayYouData = [];
 
-  final List<Map<String, dynamic>> _needsToPayYouData = [
-    {'name': 'Rahul Sharma', 'amount': '₹4,250', 'color': Color(0xFF20C060)},
-    {'name': 'Sneha Patel', 'amount': '₹3,180', 'color': Color(0xFF20C060)},
-    {'name': 'Vivek Singh', 'amount': '₹2,300', 'color': Color(0xFF20C060)},
-    {'name': 'Anjali Mehta', 'amount': '₹2,500', 'color': Color(0xFF20C060)},
-    {'name': 'Kunal Sen', 'amount': '₹1,800', 'color': Color(0xFF20C060)},
-    {'name': 'Riya Gupta', 'amount': '₹1,200', 'color': Color(0xFF20C060)},
-  ];
+  double _totalExpensesAllTrips = 0.0;
+  double _mySpendingAllTrips = 0.0;
+  double _totalNeedToPay = 0.0;
+  double _totalNeedToReceive = 0.0;
+
+  List<Map<String, dynamic>> _categoryExpenses = [];
 
   final UserService _userService = UserService();
+  final TripService _tripService = TripService();
+  final TripExpenseService _expenseService = TripExpenseService();
+
   String? _profilePhotoUrl;
   String? _profileName;
 
   @override
   void initState() {
     super.initState();
-    _fetchProfile();
+    _loadAllData();
   }
+
+  Future<void> _loadAllData() async {
+    setState(() => _isLoading = true);
+    await _fetchProfile();
+    await _fetchTripsAndExpenses();
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String? _currentUserId;
 
   Future<void> _fetchProfile() async {
     final response = await _userService.getProfile();
     if (mounted && response['success'] == true) {
       setState(() {
         _profilePhotoUrl = response['data']['profilePhoto'];
+        _currentUserId = response['data']['_id']?.toString();
         if (response['data']['firstName'] != null) {
           _profileName = '${response['data']['firstName']} ${response['data']['lastName'] ?? ''}'.trim();
         } else {
@@ -128,6 +74,250 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
         }
       });
     }
+  }
+
+  Future<void> _fetchTripsAndExpenses() async {
+    try {
+      final tripsRes = await _tripService.getTrips();
+      debugPrint('[ExpenseScreen] Trips response: $tripsRes');
+
+      if (tripsRes['success'] == true && tripsRes['data'] != null) {
+        final List tripsList = tripsRes['data'];
+        _userTrips = tripsList.map<Map<String, dynamic>>((t) => Map<String, dynamic>.from(t)).toList();
+
+        double globalTotalExpense = 0;
+        double globalMySpending = 0;
+        double globalNeedToPay = 0;
+        double globalNeedToReceive = 0;
+
+        List<Map<String, dynamic>> processedTrips = [];
+        Map<String, dynamic> payMap = {};
+        Map<String, dynamic> receiveMap = {};
+        Map<String, double> categoryTotals = {};
+
+        for (var trip in _userTrips) {
+          final String tripId = (trip['_id'] ?? trip['id']).toString();
+          final String tripName = trip['title'] ?? trip['destination'] ?? 'Trip';
+          
+          final String startDateStr = trip['startDate'] ?? '';
+          final String endDateStr = trip['endDate'] ?? '';
+          String dateFormatted = 'Dates TBD';
+          if (startDateStr.isNotEmpty && endDateStr.isNotEmpty) {
+            try {
+              final d1 = DateTime.parse(startDateStr);
+              final d2 = DateTime.parse(endDateStr);
+              dateFormatted = '${DateFormat('MMM d').format(d1)} - ${DateFormat('MMM d, yyyy').format(d2)}';
+            } catch (_) {}
+          }
+
+          // Determine status
+          bool isActive = true;
+          String statusStr = 'Active';
+          if (endDateStr.isNotEmpty) {
+            try {
+              final endDt = DateTime.parse(endDateStr);
+              if (endDt.isBefore(DateTime.now())) {
+                isActive = false;
+                statusStr = 'Completed';
+              }
+            } catch (_) {}
+          }
+
+          // Fetch Summary for this trip
+          final summaryRes = await _expenseService.getSummary(tripId);
+          debugPrint('[ExpenseScreen] Summary response for $tripId: $summaryRes');
+          double tripTotal = 0;
+          double tripMine = 0;
+          double tripOwedByYou = 0;
+          double tripOwedToYou = 0;
+
+          if (summaryRes['success'] == true && summaryRes['data'] != null) {
+            final sData = summaryRes['data'];
+            tripTotal = ((sData['totalExpense'] ?? 0) as num).toDouble();
+            tripMine = ((sData['mySpending'] ?? 0) as num).toDouble();
+            tripOwedByYou = ((sData['owedByYou'] ?? 0) as num).toDouble();
+            tripOwedToYou = ((sData['owedToYou'] ?? 0) as num).toDouble();
+          }
+
+          // Fetch balances to identify who needs to pay/receive
+          final balancesRes = await _expenseService.getBalances(tripId);
+          debugPrint('[ExpenseScreen] Balances response for $tripId: $balancesRes');
+          if (balancesRes['success'] == true && balancesRes['data'] != null) {
+            final bData = balancesRes['data'];
+            List obyList = [];
+            List otyList = [];
+            if (bData is Map) {
+              obyList = bData['owedByYou'] as List? ?? [];
+              otyList = bData['owedToYou'] as List? ?? [];
+            } else if (bData is List) {
+              for (var item in bData) {
+                final double net = ((item['netBalance'] ?? 0) as num).toDouble();
+                final String name = item['userName'] ?? item['name'] ?? 'Member';
+                if (net < 0) {
+                  payMap[name] = (payMap[name] ?? 0.0) + net.abs();
+                  tripOwedByYou += net.abs();
+                } else if (net > 0) {
+                  receiveMap[name] = (receiveMap[name] ?? 0.0) + net;
+                  tripOwedToYou += net;
+                }
+              }
+            }
+
+            for (var item in obyList) {
+              String name = 'Member';
+              if (item['userName'] != null && item['userName'].toString().isNotEmpty) {
+                name = item['userName'].toString();
+              } else if (item['name'] != null) {
+                if (item['name'] is String) {
+                  name = item['name'];
+                } else if (item['name'] is Map) {
+                  name = item['name']['name'] ?? item['name']['userName'] ?? item['name']['firstName'] ?? 'Member';
+                }
+              }
+              final double amt = ((item['amount'] ?? 0) as num).toDouble();
+              payMap[name] = (payMap[name] ?? 0.0) + amt;
+            }
+
+            for (var item in otyList) {
+              String name = 'Member';
+              if (item['userName'] != null && item['userName'].toString().isNotEmpty) {
+                name = item['userName'].toString();
+              } else if (item['name'] != null) {
+                if (item['name'] is String) {
+                  name = item['name'];
+                } else if (item['name'] is Map) {
+                  name = item['name']['name'] ?? item['name']['userName'] ?? item['name']['firstName'] ?? 'Member';
+                }
+              }
+              final double amt = ((item['amount'] ?? 0) as num).toDouble();
+              receiveMap[name] = (receiveMap[name] ?? 0.0) + amt;
+            }
+          }
+
+          // Fetch Expenses to calculate Category Breakdown & my spending fallback
+          final expensesRes = await _expenseService.getExpenses(tripId, filter: 'all');
+          debugPrint('[ExpenseScreen] Expenses response for $tripId: $expensesRes');
+          if (expensesRes['success'] == true && expensesRes['data'] != null) {
+            final List expList = expensesRes['data'];
+            double expSum = 0;
+            double myExpSum = 0;
+            for (var exp in expList) {
+              final double amt = ((exp['amount'] ?? 0) as num).toDouble();
+              expSum += amt;
+
+              final String cat = (exp['category'] ?? 'other').toString().toLowerCase();
+              categoryTotals[cat] = (categoryTotals[cat] ?? 0.0) + amt;
+
+              bool isMyExpense = exp['isCreatedByMe'] == true;
+              if (!isMyExpense && exp['paidBy'] != null) {
+                final paidBy = exp['paidBy'];
+                if (paidBy['userId'] != null && paidBy['userId'].toString() == _currentUserId) {
+                  isMyExpense = true;
+                }
+              }
+
+              if (isMyExpense) {
+                myExpSum += amt;
+              }
+            }
+
+            if (tripTotal == 0) tripTotal = expSum;
+            if (tripMine == 0) tripMine = myExpSum;
+          }
+
+          globalTotalExpense += tripTotal;
+          globalMySpending += tripMine;
+          globalNeedToPay += tripOwedByYou;
+          globalNeedToReceive += tripOwedToYou;
+
+          final currencyFormatter = NumberFormat('#,##0', 'en_US');
+          processedTrips.add({
+            'id': tripId,
+            'name': tripName,
+            'date': dateFormatted,
+            'total': '₹${currencyFormatter.format(tripTotal.toInt())}',
+            'totalSub': '₹${currencyFormatter.format(tripTotal.toInt())} spent',
+            'mine': '₹${currencyFormatter.format(tripMine.toInt())}',
+            'pay': '₹${currencyFormatter.format(tripOwedByYou.toInt())}',
+            'receive': '₹${currencyFormatter.format(tripOwedToYou.toInt())}',
+            'status': statusStr,
+            'isActive': isActive,
+            'rawTotal': tripTotal,
+          });
+        }
+
+        _totalExpensesAllTrips = globalTotalExpense;
+        _mySpendingAllTrips = globalMySpending;
+        _totalNeedToPay = globalNeedToPay;
+        _totalNeedToReceive = globalNeedToReceive;
+
+        _tripDetailsData = processedTrips;
+
+        // Process Need To Pay Data
+        final currencyFormatter = NumberFormat('#,##0', 'en_US');
+        _needToPayData = payMap.entries.map((e) => {
+          'name': e.key,
+          'amount': '₹${currencyFormatter.format(e.value.toInt())}',
+          'color': const Color(0xFFEF4444),
+        }).toList();
+
+        // Process Needs To Pay You Data
+        _needsToPayYouData = receiveMap.entries.map((e) => {
+          'name': e.key,
+          'amount': '₹${currencyFormatter.format(e.value.toInt())}',
+          'color': const Color(0xFF20C060),
+        }).toList();
+
+        // Process Category Breakdown
+        _categoryExpenses = _processCategoryBreakdown(categoryTotals, globalTotalExpense);
+      }
+    } catch (e) {
+      debugPrint('Error loading dynamic expense data: $e');
+    }
+  }
+
+  List<Map<String, dynamic>> _processCategoryBreakdown(Map<String, double> catMap, double total) {
+    if (catMap.isEmpty || total <= 0) return [];
+
+    final Map<String, Map<String, dynamic>> catMeta = {
+      'accommodation': {'label': 'Accommodation', 'color': const Color(0xFF3B82F6), 'icon': Icons.hotel_outlined},
+      'hotel': {'label': 'Accommodation', 'color': const Color(0xFF3B82F6), 'icon': Icons.hotel_outlined},
+      'travel': {'label': 'Transportation', 'color': const Color(0xFF00C6FF), 'icon': Icons.flight_takeoff_outlined},
+      'transport': {'label': 'Transportation', 'color': const Color(0xFF00C6FF), 'icon': Icons.flight_takeoff_outlined},
+      'food': {'label': 'Food & Dining', 'color': const Color(0xFF20C060), 'icon': Icons.restaurant_menu_outlined},
+      'activities': {'label': 'Activities', 'color': const Color(0xFFF59E0B), 'icon': Icons.local_activity_outlined},
+      'tickets': {'label': 'Tickets', 'color': const Color(0xFF06B6D4), 'icon': Icons.local_activity_outlined},
+      'shopping': {'label': 'Shopping', 'color': const Color(0xFF8B5CF6), 'icon': Icons.shopping_bag_outlined},
+      'medical': {'label': 'Medical', 'color': const Color(0xFFEF4444), 'icon': Icons.medical_services_outlined},
+      'other': {'label': 'Others', 'color': const Color(0xFFCBD5E1), 'icon': Icons.more_horiz_outlined},
+    };
+
+    Map<String, double> aggregated = {};
+    catMap.forEach((key, value) {
+      final label = catMeta[key]?['label'] ?? 'Others';
+      aggregated[label] = (aggregated[label] ?? 0.0) + value;
+    });
+
+    List<Map<String, dynamic>> result = [];
+    aggregated.forEach((label, amt) {
+      final meta = catMeta.values.firstWhere((m) => m['label'] == label, orElse: () => {
+        'label': label,
+        'color': const Color(0xFF8B5CF6),
+        'icon': Icons.category_outlined,
+      });
+
+      final int pct = total > 0 ? ((amt / total) * 100).round() : 0;
+      result.add({
+        'category': label,
+        'spent': amt,
+        'pct': pct,
+        'color': meta['color'],
+        'icon': meta['icon'],
+      });
+    });
+
+    result.sort((a, b) => (b['spent'] as double).compareTo(a['spent'] as double));
+    return result;
   }
 
   @override
@@ -143,28 +333,34 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
               profileName: _profileName,
             ),
             Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 20),
-                      _buildFilters(),
-                      const SizedBox(height: 20),
-                      _buildSummaryCards(),
-                      const SizedBox(height: 28),
-                      _buildExpenseOverviewSection(),
-                      const SizedBox(height: 28),
-                      _buildTripWiseDetailsSection(),
-                      const SizedBox(height: 28),
-                      _buildPaymentSplitsSection(),
-                      const SizedBox(height: 32),
-                    ],
-                  ),
-                ),
-              ),
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E5AE6)),
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 20),
+                            _buildFilters(),
+                            const SizedBox(height: 20),
+                            _buildSummaryCards(),
+                            const SizedBox(height: 28),
+                            _buildExpenseOverviewSection(),
+                            const SizedBox(height: 28),
+                            _buildTripWiseDetailsSection(),
+                            const SizedBox(height: 28),
+                            _buildPaymentSplitsSection(),
+                            const SizedBox(height: 32),
+                          ],
+                        ),
+                      ),
+                    ),
             ),
           ],
         ),
@@ -185,7 +381,8 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             icon: Icons.card_membership_outlined,
             label: _selectedTrip,
             onTap: () {
-              _showFilterOptions('Trips', ['All Trips', 'Paris Getaway', 'Bali Adventure'], (val) {
+              final List<String> tripOptions = ['All Trips', ..._userTrips.map((t) => (t['title'] ?? t['destination'] ?? 'Trip').toString())];
+              _showFilterOptions('Trips', tripOptions, (val) {
                 setState(() => _selectedTrip = val);
               });
             },
@@ -290,6 +487,8 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
 
   // --- Summary Cards ---
   Widget _buildSummaryCards() {
+    final currencyFormatter = NumberFormat('#,##0', 'en_US');
+
     return Column(
       children: [
         Row(
@@ -297,7 +496,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             Expanded(
               child: _buildSummaryCard(
                 title: 'Total Expenses',
-                value: '₹1,28,450',
+                value: '₹${currencyFormatter.format(_totalExpensesAllTrips.toInt())}',
                 caption: 'All trips combined',
                 icon: Icons.account_balance_wallet,
                 accentColor: const Color(0xFF1E5AE6),
@@ -307,7 +506,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             Expanded(
               child: _buildSummaryCard(
                 title: 'My Spending',
-                value: '₹62,430',
+                value: '₹${currencyFormatter.format(_mySpendingAllTrips.toInt())}',
                 caption: 'You have spent',
                 icon: Icons.credit_card_outlined,
                 accentColor: const Color(0xFF20C060),
@@ -321,9 +520,9 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             Expanded(
               child: _buildSummaryCard(
                 title: 'Need to Pay',
-                value: '₹18,750',
+                value: '₹${currencyFormatter.format(_totalNeedToPay.toInt())}',
                 caption: 'You need to pay',
-                icon: Icons.arrow_downward,
+                icon: Icons.arrow_upward,
                 accentColor: const Color(0xFFEF4444),
               ),
             ),
@@ -331,10 +530,10 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             Expanded(
               child: _buildSummaryCard(
                 title: 'Need to Receive',
-                value: '₹12,230',
+                value: '₹${currencyFormatter.format(_totalNeedToReceive.toInt())}',
                 caption: 'You will receive',
-                icon: Icons.arrow_upward,
-                accentColor: const Color(0xFFF59E0B),
+                icon: Icons.arrow_downward,
+                accentColor: const Color(0xFF20C060),
               ),
             ),
           ],
@@ -484,15 +683,22 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                             sectionsSpace: 3,
                             centerSpaceRadius: 32,
                             startDegreeOffset: -90,
-                            sections: [
-                              PieChartSectionData(color: const Color(0xFF1E5AE6), value: 32, radius: 30, showTitle: true, title: '32%', titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                              PieChartSectionData(color: const Color(0xFF20C060), value: 20, radius: 30, showTitle: true, title: '20%', titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                              PieChartSectionData(color: const Color(0xFFF59E0B), value: 15, radius: 30, showTitle: true, title: '15%', titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                              PieChartSectionData(color: const Color(0xFFEF4444), value: 13, radius: 30, showTitle: true, title: '13%', titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                              PieChartSectionData(color: const Color(0xFF8B5CF6), value: 10, radius: 30, showTitle: true, title: '10%', titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
-                              PieChartSectionData(color: const Color(0xFF06B6D4), value: 6, radius: 30, showTitle: false),
-                              PieChartSectionData(color: const Color(0xFFCBD5E1), value: 4, radius: 30, showTitle: false),
-                            ],
+                            sections: _categoryExpenses.isNotEmpty
+                                ? _categoryExpenses.map((c) {
+                                    final double val = (c['spent'] as double);
+                                    final int pct = c['pct'] as int;
+                                    return PieChartSectionData(
+                                      color: c['color'] as Color,
+                                      value: val > 0 ? val : 1,
+                                      radius: 30,
+                                      showTitle: pct >= 5,
+                                      title: '$pct%',
+                                      titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                                    );
+                                  }).toList()
+                                : [
+                                    PieChartSectionData(color: const Color(0xFFCBD5E1), value: 100, radius: 30, showTitle: false),
+                                  ],
                           ),
                         ),
                         Center(
@@ -513,12 +719,14 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                             ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
+                              children: [
                                 Text(
-                                  '₹1.28L',
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                                  _totalExpensesAllTrips >= 100000
+                                      ? '₹${(_totalExpensesAllTrips / 100000).toStringAsFixed(1)}L'
+                                      : '₹${NumberFormat('#,##0', 'en_US').format(_totalExpensesAllTrips.toInt())}',
+                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                                 ),
-                                Text(
+                                const Text(
                                   'Total',
                                   style: TextStyle(fontSize: 8, color: AppColors.textSecondary),
                                 ),
@@ -533,15 +741,19 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                   // Legend
                   Expanded(
                     child: Column(
-                      children: [
-                        _buildLegendItem(const Color(0xFF1E5AE6), 'Food & Dining', '₹41,020', '32%'),
-                        _buildLegendItem(const Color(0xFF20C060), 'Accommodation', '₹25,680', '20%'),
-                        _buildLegendItem(const Color(0xFFF59E0B), 'Transportation', '₹19,230', '15%'),
-                        _buildLegendItem(const Color(0xFFEF4444), 'Activities', '₹16,670', '13%'),
-                        _buildLegendItem(const Color(0xFF8B5CF6), 'Shopping', '₹12,820', '10%'),
-                        _buildLegendItem(const Color(0xFF06B6D4), 'Tickets', '₹7,700', '6%'),
-                        _buildLegendItem(const Color(0xFFCBD5E1), 'Others', '₹5,030', '4%'),
-                      ],
+                      children: _categoryExpenses.isNotEmpty
+                          ? _categoryExpenses.map((c) {
+                              final currencyFormatter = NumberFormat('#,##0', 'en_US');
+                              return _buildLegendItem(
+                                c['color'] as Color,
+                                c['category'].toString(),
+                                '₹${currencyFormatter.format((c['spent'] as double).toInt())}',
+                                '${c['pct']}%',
+                              );
+                            }).toList()
+                          : [
+                              _buildLegendItem(const Color(0xFFCBD5E1), 'No Expenses', '₹0', '0%'),
+                            ],
                     ),
                   ),
                 ],
@@ -922,6 +1134,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
   Widget _buildPaymentSplitsSection() {
     final displayNeedToPay = _showAllNeedToPay ? _needToPayData : _needToPayData.take(3).toList();
     final displayNeedsToPayYou = _showAllNeedsToPayYou ? _needsToPayYouData : _needsToPayYouData.take(3).toList();
+    final currencyFormatter = NumberFormat('#,##0', 'en_US');
 
     return Column(
       children: [
@@ -956,13 +1169,19 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
               ),
               child: Column(
                 children: [
-                  ...displayNeedToPay.map((item) => _buildSplitItem(item['name'], item['amount'], item['color'])),
+                  if (displayNeedToPay.isNotEmpty)
+                    ...displayNeedToPay.map((item) => _buildSplitItem(item['name'], item['amount'], item['color']))
+                  else
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text('No pending payments', style: TextStyle(fontSize: 11, color: AppColors.textLight)),
+                    ),
                   const Divider(color: Color(0xFFF1F5F9), height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Text('Total to Pay', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
-                      Text('₹18,750', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFEF4444))),
+                    children: [
+                      const Text('Total to Pay', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
+                      Text('₹${currencyFormatter.format(_totalNeedToPay.toInt())}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFEF4444))),
                     ],
                   ),
                 ],
@@ -1002,13 +1221,19 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
               ),
               child: Column(
                 children: [
-                  ...displayNeedsToPayYou.map((item) => _buildSplitItem(item['name'], item['amount'], item['color'])),
+                  if (displayNeedsToPayYou.isNotEmpty)
+                    ...displayNeedsToPayYou.map((item) => _buildSplitItem(item['name'], item['amount'], item['color']))
+                  else
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text('No pending receivables', style: TextStyle(fontSize: 11, color: AppColors.textLight)),
+                    ),
                   const Divider(color: Color(0xFFF1F5F9), height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Text('Total to Receive', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
-                      Text('₹12,230', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF20C060))),
+                    children: [
+                      const Text('Total to Receive', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
+                      Text('₹${currencyFormatter.format(_totalNeedToReceive.toInt())}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF20C060))),
                     ],
                   ),
                 ],

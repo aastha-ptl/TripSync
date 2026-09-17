@@ -1,8 +1,11 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../documents/screens/documents_screen.dart';
 import '../../participants/screens/participants_screen.dart';
 import '../../expenses/screens/trip_expense_screen.dart';
+import '../../expenses/services/trip_expense_service.dart';
+import '../../profile/services/user_service.dart';
 import '../../profile/screens/profile_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
@@ -32,6 +35,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   int _selectedNavIndex = 0;
   bool _isLoading = true;
   List<Map<String, dynamic>> _upcomingActivities = [];
+  List<Map<String, dynamic>> _recentActivities = [];
   int? _membersCount;
   final TripService _tripService = TripService();
 
@@ -40,6 +44,192 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     super.initState();
     _fetchUpcomingActivities();
     _fetchTripMembersCount();
+    _fetchRecentActivities();
+  }
+
+  Future<void> _fetchRecentActivities() async {
+    final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
+    if (tripId == null || tripId.isEmpty) return;
+
+    try {
+      final userService = UserService();
+      final expenseService = TripExpenseService();
+      final itineraryService = ItineraryService();
+
+      String? currentUserId;
+      String? currentUserName;
+      String? currentUserFirstName;
+
+      try {
+        final profileRes = await userService.getProfile();
+        if (profileRes['success'] == true && profileRes['data'] != null) {
+          final uData = profileRes['data'];
+          currentUserId = uData['_id']?.toString();
+          final fn = (uData['firstName'] ?? '').toString().trim();
+          final ln = (uData['lastName'] ?? '').toString().trim();
+          currentUserFirstName = fn.isNotEmpty ? fn : (uData['name'] ?? '').toString().trim();
+          currentUserName = '$fn $ln'.trim();
+          if (currentUserName == null || currentUserName!.isEmpty) {
+            currentUserName = uData['name']?.toString().trim();
+          }
+        }
+      } catch (_) {}
+
+      List<Map<String, dynamic>> items = [];
+      final currencyFormatter = NumberFormat('#,##0', 'en_US');
+
+      // Fetch expenses
+      final expensesRes = await expenseService.getExpenses(tripId);
+      if (expensesRes['success'] == true && expensesRes['data'] != null) {
+        final List expenses = expensesRes['data'];
+        for (var exp in expenses) {
+          final title = exp['title'] ?? 'Expense';
+          final amt = (exp['amount'] ?? 0).toDouble();
+          final cat = exp['category'] ?? 'expense';
+
+          final String? rawName = exp['paidBy']?['guestName'] ?? 
+                      exp['paidBy']?['userName'] ?? 
+                      exp['paidBy']?['name'] ?? 
+                      (exp['avatars'] != null && (exp['avatars'] as List).isNotEmpty ? exp['avatars'][0]['name'] : null);
+
+          bool isCreatedByMe = exp['isCreatedByMe'] == true ||
+              (exp['paidBy'] != null && exp['paidBy']['userId']?.toString() == currentUserId);
+
+          if (!isCreatedByMe && rawName != null && rawName.isNotEmpty) {
+            final String lowerRaw = rawName.trim().toLowerCase();
+            if (currentUserName != null && currentUserName!.isNotEmpty && lowerRaw == currentUserName!.toLowerCase()) {
+              isCreatedByMe = true;
+            } else if (currentUserFirstName != null && currentUserFirstName!.isNotEmpty && lowerRaw == currentUserFirstName!.toLowerCase()) {
+              isCreatedByMe = true;
+            }
+          }
+
+          final String payerName = isCreatedByMe ? 'You' : (rawName ?? 'A member');
+
+          String timeAgo = 'Recently';
+          DateTime? createdAt;
+          if (exp['createdAt'] != null) {
+            createdAt = DateTime.tryParse(exp['createdAt']);
+            if (createdAt != null) {
+              timeAgo = _formatRelativeTime(createdAt);
+            }
+          }
+
+          items.add({
+            'type': 'expense',
+            'title': '$payerName added a $cat expense',
+            'subtitle': 'Rs. ${currencyFormatter.format(amt.toInt())} • $title',
+            'time': timeAgo,
+            'timestamp': createdAt ?? DateTime.now(),
+            'icon': Icons.restaurant_menu,
+            'bgColor': const Color(0xFFE8F5E9),
+            'iconColor': const Color(0xFF2E7D32),
+          });
+        }
+      }
+
+      // Fetch itinerary events
+      final itineraryRes = await itineraryService.getItinerary(tripId);
+      if (itineraryRes['success'] == true && itineraryRes['data'] != null) {
+        final List days = itineraryRes['data'];
+        for (var day in days) {
+          final List acts = day['activities'] ?? [];
+          final dayNum = day['dayNumber'] ?? 1;
+          for (var act in acts) {
+            final title = act['title'] ?? 'Event';
+
+            DateTime? actTime;
+            if (act['createdAt'] != null) {
+              actTime = DateTime.tryParse(act['createdAt']);
+            } else if (act['updatedAt'] != null) {
+              actTime = DateTime.tryParse(act['updatedAt']);
+            } else if (act['startTime'] != null) {
+              actTime = DateTime.tryParse(act['startTime']);
+            }
+
+            String timeAgo = 'Recently';
+            if (actTime != null) {
+              timeAgo = _formatRelativeTime(actTime);
+            }
+
+            items.add({
+              'type': 'itinerary',
+              'title': 'Itinerary updated for Day $dayNum',
+              'subtitle': 'Added $title',
+              'time': timeAgo,
+              'timestamp': actTime ?? DateTime.now(),
+              'icon': Icons.calendar_month_outlined,
+              'bgColor': const Color(0xFFF3E8FF),
+              'iconColor': const Color(0xFF9333EA),
+            });
+          }
+        }
+      }
+
+      if (items.isEmpty) {
+        items = [
+          {
+            'type': 'expense',
+            'title': 'Rahul added a food expense',
+            'subtitle': 'Rs. 2,350 at Cafe de Paris',
+            'time': '2h ago',
+            'icon': Icons.restaurant_menu,
+            'bgColor': const Color(0xFFE8F5E9),
+            'iconColor': const Color(0xFF2E7D32),
+          },
+          {
+            'type': 'itinerary',
+            'title': 'Itinerary updated for Day 3',
+            'subtitle': 'Added Seine River Cruise',
+            'time': '5h ago',
+            'icon': Icons.calendar_month_outlined,
+            'bgColor': const Color(0xFFF3E8FF),
+            'iconColor': const Color(0xFF9333EA),
+          },
+          {
+            'type': 'document',
+            'title': 'Flight ticket uploaded',
+            'subtitle': 'By Priya',
+            'time': '1d ago',
+            'icon': Icons.description_outlined,
+            'bgColor': const Color(0xFFE3F2FD),
+            'iconColor': const Color(0xFF1976D2),
+          },
+        ];
+      }
+
+      items.sort((a, b) {
+        final DateTime tA = a['timestamp'] ?? DateTime.now();
+        final DateTime tB = b['timestamp'] ?? DateTime.now();
+        return tB.compareTo(tA);
+      });
+
+      if (mounted) {
+        setState(() {
+          _recentActivities = items.take(5).toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching recent activities: $e');
+    }
+  }
+
+  String _formatRelativeTime(DateTime dt) {
+    final localDt = dt.toLocal();
+    final now = DateTime.now();
+    final diff = now.difference(localDt);
+
+    if (diff.inMinutes < 1) {
+      return 'Just now';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24 && localDt.day == now.day) {
+      return '${diff.inHours}h ago';
+    } else if (diff.inDays < 7) {
+      return '${max(1, diff.inDays)}d ago';
+    } else {
+      return DateFormat('MMM d').format(localDt);
+    }
   }
 
   Future<void> _fetchTripMembersCount() async {
@@ -853,6 +1043,115 @@ String _getTripDuration() {
               ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentActivitiesSection() {
+    if (_recentActivities.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Trip Activity',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            GestureDetector(
+              onTap: () {
+                Navigator.pushNamed(context, AppRoutes.tripOverview, arguments: {'tripData': widget.tripData});
+              },
+              child: const Text(
+                'View All >',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0072FF),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            children: List.generate(_recentActivities.length, (index) {
+              final item = _recentActivities[index];
+              final isLast = index == _recentActivities.length - 1;
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: item['bgColor'] as Color,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(item['icon'] as IconData, color: item['iconColor'] as Color, size: 18),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item['title'],
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                item['subtitle'],
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          item['time'],
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF94A3B8),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!isLast) const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                ],
+              );
+            }),
+          ),
         ),
       ],
     );

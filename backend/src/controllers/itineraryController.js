@@ -175,6 +175,9 @@ export const updateActivity = async (req, res) => {
     activity.description = description || notes || activity.description;
     activity.type = type || activity.type;
     activity.startTime = startTime || activity.startTime;
+    if (req.body.status) {
+      activity.status = req.body.status;
+    }
     if (location !== undefined) {
       activity.location.name = location;
     }
