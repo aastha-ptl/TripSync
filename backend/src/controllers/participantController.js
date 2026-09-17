@@ -17,8 +17,21 @@ export const getTripParticipants = async (req, res) => {
 
     // Fetch all approved participants, including family members
     const participants = await TripParticipant.find({ tripId, status: "approved" })
-      .populate("userId", "firstName lastName profilePhoto phone")
+      .populate("userId", "firstName lastName profilePhoto phone dateOfBirth")
       .lean();
+
+    const calculateAge = (dob) => {
+      if (!dob) return null;
+      const birthDate = new Date(dob);
+      if (isNaN(birthDate.getTime())) return null;
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const m = today.getMonth() - birthDate.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      return age >= 0 ? age : null;
+    };
 
     // Group by familyId
     const familiesMap = {};
@@ -57,10 +70,11 @@ export const getTripParticipants = async (req, res) => {
         userId: user ? user._id : null,
         name: user ? `${user.firstName} ${user.lastName}` : "Unknown User",
         role: isTripLeader ? "tripLeader" : (isSolo ? "soloTraveler" : p.role),
-        type: isTripLeader ? "Individual" : (isSolo ? "Solo" : "Individual"),
-        group: isTripLeader ? "Individual" : (isSolo ? "Solo Traveler" : "Individual"),
+        type: "Solo",
+        group: "Solo Traveler",
         avatar: user?.profilePhoto || null,
         phone: user?.phone || "N/A",
+        age: calculateAge(user?.dateOfBirth),
         familyMembers: [],
       });
     }
@@ -98,7 +112,7 @@ export const getTripParticipants = async (req, res) => {
               relationship: fm.relationship || "Family Member",
               email: fm.email || mUser?.email || null,
               phone: fm.phone || mUser?.phone || "N/A",
-              age: fm.age || 0,
+              age: fm.age || (mUser?.dateOfBirth ? calculateAge(mUser.dateOfBirth) : 0),
               avatar: mUser?.profilePhoto || null,
             });
           }
@@ -113,7 +127,7 @@ export const getTripParticipants = async (req, res) => {
               relationship: "Family Member",
               email: mUser?.email || null,
               phone: mUser?.phone || "N/A",
-              age: 0,
+              age: mUser?.dateOfBirth ? calculateAge(mUser.dateOfBirth) : 0,
               avatar: mUser?.profilePhoto || null,
             });
           }
@@ -126,10 +140,11 @@ export const getTripParticipants = async (req, res) => {
             userId: lUser ? lUser._id : null,
             name: lUser ? `${lUser.firstName} ${lUser.lastName}` : "Unknown User",
             role: isTripLeader ? "tripLeader" : "soloTraveler",
-            type: isTripLeader ? "Individual" : "Solo",
-            group: isTripLeader ? "Individual" : "Solo Traveler",
+            type: "Solo",
+            group: "Solo Traveler",
             avatar: lUser?.profilePhoto || null,
             phone: lUser?.phone || "N/A",
+            age: calculateAge(lUser?.dateOfBirth),
             familyMembers: [],
           });
         } else {
@@ -142,6 +157,7 @@ export const getTripParticipants = async (req, res) => {
             group: "Family Group",
             avatar: lUser?.profilePhoto || null,
             phone: lUser?.phone || "N/A",
+            age: calculateAge(lUser?.dateOfBirth),
             familyMembers: allFamilyMembers,
           });
         }

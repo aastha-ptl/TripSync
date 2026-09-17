@@ -43,6 +43,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
   String? _currentUserRole;
   String? _fetchedTripType;
   String? _fetchedBusinessTripType;
+  final Set<String> _expandedFamilyIds = {};
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -159,6 +160,15 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
   String _getInitials(String? name) {
     if (name == null || name.isEmpty) return 'U';
     return name.split(' ').take(2).map((e) => e[0].toUpperCase()).join();
+  }
+
+  bool _hasValidPhone(dynamic phone) {
+    if (phone == null) return false;
+    final str = phone.toString().trim();
+    if (str.isEmpty) return false;
+    final lower = str.toLowerCase();
+    if (lower == 'null' || lower == 'n/a' || lower == 'none' || lower == 'no contact info') return false;
+    return RegExp(r'\d').hasMatch(str);
   }
 
   List<Map<String, dynamic>> get _filteredParticipants {
@@ -646,6 +656,17 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                               final familyMembers = member['familyMembers'] as List<dynamic>? ?? [];
                               final hasFamilyMembers = familyMembers.isNotEmpty;
                               final isFamilyLeader = (member['role'] == 'familyLeader' || member['role'] == 'Family Leader') && hasFamilyMembers;
+                              final memberId = (member['id'] ?? member['_id'] ?? member['userId'] ?? member['name'] ?? '').toString();
+
+                              final q = _searchQuery.trim().toLowerCase();
+                              final hasMatchingChild = q.isNotEmpty && familyMembers.any((fm) {
+                                final fmName = (fm['name'] ?? '').toString().toLowerCase();
+                                final fmEmail = (fm['email'] ?? '').toString().toLowerCase();
+                                final fmPhone = (fm['phone'] ?? fm['mobile'] ?? '').toString().toLowerCase();
+                                final fmRel = (fm['relationship'] ?? '').toString().toLowerCase();
+                                return fmName.contains(q) || fmEmail.contains(q) || fmPhone.contains(q) || fmRel.contains(q);
+                              });
+                              final isExpanded = _expandedFamilyIds.contains(memberId) || hasMatchingChild;
 
                               Widget titleWidget = Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -675,7 +696,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                             borderRadius: BorderRadius.circular(6),
                                           ),
                                           child: const Text(
-                                            'Leader',
+                                            'Trip Leader',
                                             style: TextStyle(
                                               fontSize: 8,
                                               fontWeight: FontWeight.bold,
@@ -687,7 +708,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFFF0FDF4),
+                                            color: const Color(0xFFF1F5F9),
                                             borderRadius: BorderRadius.circular(6),
                                           ),
                                           child: const Text(
@@ -695,7 +716,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                             style: TextStyle(
                                               fontSize: 8,
                                               fontWeight: FontWeight.bold,
-                                              color: Color(0xFF16A34A),
+                                              color: Color(0xFF475569),
                                             ),
                                           ),
                                         ),
@@ -711,133 +732,167 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                 ),
                               );
                               
-                              final groupText = member['group'] != null && member['group'].toString().isNotEmpty && member['group'] != 'null'
-                                  ? (hasFamilyMembers ? member['group'] : (isLeader ? 'Individual' : 'Solo Traveler'))
-                                  : (hasFamilyMembers ? 'Family Group' : (isLeader ? 'Individual' : 'Solo Traveler'));
-                              final contactText = member['phone'] ?? member['mobile'] ?? member['email'] ?? 'No contact info';
+                              final groupText = member['group'] != null &&
+                                      member['group'].toString().isNotEmpty &&
+                                      member['group'] != 'null' &&
+                                      member['group'] != 'Individual'
+                                  ? (hasFamilyMembers ? member['group'] : 'Solo Traveler')
+                                  : (hasFamilyMembers ? 'Family Group' : 'Solo Traveler');
+                              final memberAge = (member['age'] != null && member['age'].toString() != '0' && member['age'].toString().isNotEmpty && member['age'].toString().toLowerCase() != 'null')
+                                  ? member['age'].toString()
+                                  : 'N/A';
 
-                              Widget subtitleWidget = Text(
-                                '$groupText • $contactText',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              Widget subtitleWidget = Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    hasFamilyMembers
+                                        ? '$groupText (${familyMembers.length + 1} Members)'
+                                        : groupText,
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Age: $memberAge',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                  ),
+                                ],
                               );
 
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: isFamilyLeader ? const Color(0xFFF4FBF7) : Colors.white,
+                                  color: Colors.white,
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(
-                                    color: isFamilyLeader ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
-                                    width: isFamilyLeader ? 1.5 : 1.0,
+                                    color: const Color(0xFFE2E8F0),
+                                    width: 1.0,
                                   ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.02),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                                 ),
                                 child: Column(
                                   children: [
-                                    if (isFamilyLeader) ...[
-                                      Row(
+                                    GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: hasFamilyMembers
+                                          ? () {
+                                              setState(() {
+                                                if (_expandedFamilyIds.contains(memberId)) {
+                                                  _expandedFamilyIds.remove(memberId);
+                                                } else {
+                                                  _expandedFamilyIds.add(memberId);
+                                                }
+                                              });
+                                            }
+                                          : null,
+                                      child: Row(
                                         children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(6),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFDCFCE7),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: const Icon(Icons.family_restroom, color: Color(0xFF16A34A), size: 16),
-                                          ),
-                                          const SizedBox(width: 8),
+                                          leadingWidget,
+                                          const SizedBox(width: 12),
                                           Expanded(
-                                            child: Text(
-                                              groupText != 'Family' && groupText != 'Individual' ? groupText : 'Family Group',
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                titleWidget,
+                                                const SizedBox(height: 2),
+                                                subtitleWidget,
+                                              ],
                                             ),
                                           ),
-                                          Text(
-                                            '${familyMembers.length + 1} Members',
-                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Color(0xFF16A34A)),
-                                          ),
+                                          if (_hasValidPhone(member['phone']))
+                                            IconButton(
+                                              icon: const Icon(Icons.call_outlined, color: AppColors.primary, size: 20),
+                                              tooltip: 'Call',
+                                              onPressed: () async {
+                                                final phone = member['phone'];
+                                                if (phone != null && phone.toString().isNotEmpty) {
+                                                  final Uri launchUri = Uri(
+                                                    scheme: 'tel',
+                                                    path: phone.toString().trim(),
+                                                  );
+                                                  if (await canLaunchUrl(launchUri)) {
+                                                    await launchUrl(launchUri);
+                                                  } else {
+                                                    if (context.mounted) {
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        SnackBar(content: Text('Could not launch dialer for ${member['name']}')),
+                                                      );
+                                                    }
+                                                  }
+                                                }
+                                              },
+                                            ),
+                                          if (hasFamilyMembers)
+                                            IconButton(
+                                              icon: AnimatedRotation(
+                                                turns: isExpanded ? 0.5 : 0.0,
+                                                duration: const Duration(milliseconds: 200),
+                                                child: const Icon(
+                                                  Icons.keyboard_arrow_down_rounded,
+                                                  color: Color(0xFF64748B),
+                                                  size: 24,
+                                                ),
+                                              ),
+                                              tooltip: isExpanded ? 'Hide family members' : 'Show family members',
+                                              onPressed: () {
+                                                setState(() {
+                                                  if (_expandedFamilyIds.contains(memberId)) {
+                                                    _expandedFamilyIds.remove(memberId);
+                                                  } else {
+                                                    _expandedFamilyIds.add(memberId);
+                                                  }
+                                                });
+                                              },
+                                            ),
                                         ],
                                       ),
-                                      const SizedBox(height: 12),
-                                      const Divider(height: 1, color: Color(0xFFBBF7D0)),
-                                      const SizedBox(height: 12),
-                                    ],
-                                    Row(
-                                      children: [
-                                        leadingWidget,
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              titleWidget,
-                                              const SizedBox(height: 2),
-                                              subtitleWidget,
-                                            ],
-                                          ),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.call_outlined, color: AppColors.primary, size: 20),
-                                          onPressed: () async {
-                                            final phone = member['phone'];
-                                            if (phone != null && phone.toString().isNotEmpty) {
-                                              final Uri launchUri = Uri(
-                                                scheme: 'tel',
-                                                path: phone.toString(),
-                                              );
-                                              if (await canLaunchUrl(launchUri)) {
-                                                await launchUrl(launchUri);
-                                              } else {
-                                                if (context.mounted) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(content: Text('Could not launch dialer for ${member['name']}')),
-                                                  );
-                                                }
-                                              }
-                                            } else {
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(content: Text('No phone number available for ${member['name']}')),
-                                                );
-                                              }
-                                            }
-                                          },
-                                        ),
-                                      ],
                                     ),
-                                    if (hasFamilyMembers) ...[
-                                      const SizedBox(height: 12),
+                                    if (hasFamilyMembers && isExpanded) ...[
+                                      const SizedBox(height: 10),
+                                      const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                                      const SizedBox(height: 10),
                                       Column(
                                         children: familyMembers.map((fm) {
                                           final fmName = (fm['name'] ?? '').toString();
                                           final fmEmail = (fm['email'] ?? '').toString();
                                           final fmPhone = (fm['phone'] ?? fm['mobile'] ?? '').toString();
                                           final fmRel = (fm['relationship'] ?? 'Family').toString();
+                                          final fmAge = (fm['age'] != null && fm['age'].toString() != '0' && fm['age'].toString().isNotEmpty && fm['age'].toString().toLowerCase() != 'null')
+                                              ? fm['age'].toString()
+                                              : 'N/A';
 
-                                          final q = _searchQuery.trim().toLowerCase();
                                           final isMatched = q.isNotEmpty && (
                                             fmName.toLowerCase().contains(q) ||
                                             fmEmail.toLowerCase().contains(q) ||
                                             fmPhone.toLowerCase().contains(q) ||
-                                            fmRel.toLowerCase().contains(q)
+                                            fmRel.toLowerCase().contains(q) ||
+                                            fmAge.toLowerCase().contains(q)
                                           );
 
                                           return Container(
                                             margin: const EdgeInsets.only(bottom: 6),
                                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                             decoration: BoxDecoration(
-                                              color: isMatched ? const Color(0xFFF0FDF4) : Colors.white,
+                                              color: isMatched ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
                                               borderRadius: BorderRadius.circular(12),
                                               border: Border.all(
-                                                color: isMatched ? const Color(0xFF16A34A) : const Color(0xFFBBF7D0),
-                                                width: isMatched ? 1.5 : 1.0,
+                                                color: isMatched ? const Color(0xFF3B82F6) : const Color(0xFFE2E8F0),
+                                                width: 1.0,
                                               ),
                                             ),
                                             child: Row(
                                               children: [
                                                 CircleAvatar(
                                                   radius: 14,
-                                                  backgroundColor: Colors.white,
+                                                  backgroundColor: const Color(0xFFE2E8F0),
                                                   backgroundImage: (fm['avatar'] != null && fm['avatar'].toString().isNotEmpty)
                                                       ? CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(fm['avatar']))
                                                       : null,
@@ -848,7 +903,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                                               : 'U',
                                                           style: TextStyle(
                                                             fontSize: 12,
-                                                            color: isMatched ? const Color(0xFF16A34A) : AppColors.primary,
+                                                            color: isMatched ? const Color(0xFF1D4ED8) : const Color(0xFF475569),
                                                             fontWeight: FontWeight.bold,
                                                           ),
                                                         )
@@ -867,7 +922,7 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                                               style: TextStyle(
                                                                 fontSize: 13,
                                                                 fontWeight: isMatched ? FontWeight.bold : FontWeight.w600,
-                                                                color: isMatched ? const Color(0xFF15803D) : const Color(0xFF334155),
+                                                                color: isMatched ? const Color(0xFF1D4ED8) : const Color(0xFF334155),
                                                               ),
                                                               overflow: TextOverflow.ellipsis,
                                                             ),
@@ -875,14 +930,14 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                                           Container(
                                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                             decoration: BoxDecoration(
-                                                              color: isMatched ? const Color(0xFFDCFCE7) : const Color(0xFFEFF6FF),
+                                                              color: isMatched ? const Color(0xFFDBEAFE) : const Color(0xFFF1F5F9),
                                                               borderRadius: BorderRadius.circular(6),
                                                             ),
                                                             child: Text(
                                                               isMatched ? 'Matched' : 'Member',
                                                               style: TextStyle(
                                                                 fontSize: 10,
-                                                                color: isMatched ? const Color(0xFF16A34A) : AppColors.primary,
+                                                                color: isMatched ? const Color(0xFF1D4ED8) : const Color(0xFF64748B),
                                                                 fontWeight: FontWeight.bold,
                                                               ),
                                                             ),
@@ -891,39 +946,40 @@ class _ParticipantsScreenState extends State<ParticipantsScreen> {
                                                       ),
                                                       const SizedBox(height: 2),
                                                       Text(
-                                                        '$fmRel • ${fmPhone.isNotEmpty ? fmPhone : (fmEmail.isNotEmpty ? fmEmail : 'No contact info')}',
+                                                        'Age: $fmAge',
+                                                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                                      ),
+                                                      const SizedBox(height: 1),
+                                                      Text(
+                                                        'Relation: $fmRel',
                                                         style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                                                       ),
                                                     ],
                                                   ),
                                                 ),
-                                                IconButton(
-                                                  icon: const Icon(Icons.call_outlined, color: AppColors.primary, size: 18),
-                                                  onPressed: () async {
-                                                    final phone = fm['phone'] ?? fm['mobile'] ?? fm['email'];
-                                                    if (phone != null && phone.toString().isNotEmpty && RegExp(r'^[0-9+\-\s]+$').hasMatch(phone.toString())) {
-                                                      final Uri launchUri = Uri(
-                                                        scheme: 'tel',
-                                                        path: phone.toString(),
-                                                      );
-                                                      if (await canLaunchUrl(launchUri)) {
-                                                        await launchUrl(launchUri);
-                                                      } else {
-                                                        if (context.mounted) {
-                                                          ScaffoldMessenger.of(context).showSnackBar(
-                                                            SnackBar(content: Text('Could not launch dialer for ${fm['name']}')),
-                                                          );
+                                                if (_hasValidPhone(fmPhone))
+                                                  IconButton(
+                                                    icon: const Icon(Icons.call_outlined, color: AppColors.primary, size: 18),
+                                                    tooltip: 'Call',
+                                                    onPressed: () async {
+                                                      final phone = fm['phone'] ?? fm['mobile'] ?? fm['email'];
+                                                      if (phone != null && phone.toString().isNotEmpty) {
+                                                        final Uri launchUri = Uri(
+                                                          scheme: 'tel',
+                                                          path: phone.toString().trim(),
+                                                        );
+                                                        if (await canLaunchUrl(launchUri)) {
+                                                          await launchUrl(launchUri);
+                                                        } else {
+                                                          if (context.mounted) {
+                                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                              SnackBar(content: Text('Could not launch dialer for ${fm['name']}')),
+                                                            );
+                                                          }
                                                         }
                                                       }
-                                                    } else {
-                                                      if (context.mounted) {
-                                                        ScaffoldMessenger.of(context).showSnackBar(
-                                                          SnackBar(content: Text('No valid phone number available for ${fm['name']}')),
-                                                        );
-                                                      }
-                                                    }
-                                                  },
-                                                ),
+                                                    },
+                                                  ),
                                               ],
                                             ),
                                           );
