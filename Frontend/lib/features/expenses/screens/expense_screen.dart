@@ -6,9 +6,13 @@ import '../../profile/services/user_service.dart';
 import '../../trip/services/trip_service.dart';
 import '../services/trip_expense_service.dart';
 import '../../../core/widgets/custom_app_bar.dart';
+import '../../profile/screens/profile_screen.dart';
+import 'trip_expense_screen.dart';
 
 class ExpenseScreen extends StatefulWidget {
-  const ExpenseScreen({super.key});
+  final VoidCallback? onProfileTap;
+
+  const ExpenseScreen({super.key, this.onProfileTap});
 
   @override
   State<ExpenseScreen> createState() => _ExpenseScreenState();
@@ -16,8 +20,11 @@ class ExpenseScreen extends StatefulWidget {
 
 class _ExpenseScreenState extends State<ExpenseScreen> {
   String _selectedTrip = 'All Trips';
+  String? _selectedTripId;
   String _selectedCategory = 'All Categories';
   String _selectedMonth = 'This Month';
+  DateTime? _selectedStartDate;
+  DateTime? _selectedEndDate;
 
   bool _showAllTrips = false;
   bool _showAllNeedToPay = false;
@@ -25,7 +32,11 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
 
   bool _isLoading = true;
 
-  List<Map<String, dynamic>> _userTrips = [];
+  // Trips dropdown options (Trip Name -> Trip ID)
+  final Map<String, String> _tripNameToIdMap = {};
+  List<String> _tripFilterOptions = ['All Trips'];
+
+  // Display data from the User Expense API
   List<Map<String, dynamic>> _tripDetailsData = [];
   List<Map<String, dynamic>> _needToPayData = [];
   List<Map<String, dynamic>> _needsToPayYouData = [];
@@ -36,6 +47,15 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
   double _totalNeedToReceive = 0.0;
 
   List<Map<String, dynamic>> _categoryExpenses = [];
+
+  // Trend chart state
+  List<FlSpot> _trendSpots = [];
+  List<String> _trendMonthLabels = [];
+  double _trendMaxY = 10000;
+  double _monthlyAverage = 0;
+  double _trendPercentChange = 0;
+  bool _trendIsUp = true;
+  List<double> _sparklineData = [0, 0, 0, 0, 0, 0];
 
   final UserService _userService = UserService();
   final TripService _tripService = TripService();
@@ -51,273 +71,231 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
   }
 
   Future<void> _loadAllData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     await _fetchProfile();
-    await _fetchTripsAndExpenses();
+    await _fetchUserTrips();
+    await _fetchUserExpenseOverview();
     if (mounted) {
       setState(() => _isLoading = false);
     }
   }
 
-  String? _currentUserId;
-
   Future<void> _fetchProfile() async {
-    final response = await _userService.getProfile();
-    if (mounted && response['success'] == true) {
-      setState(() {
-        _profilePhotoUrl = response['data']['profilePhoto'];
-        _currentUserId = response['data']['_id']?.toString();
-        if (response['data']['firstName'] != null) {
-          _profileName = '${response['data']['firstName']} ${response['data']['lastName'] ?? ''}'.trim();
-        } else {
-          _profileName = response['data']['name'];
-        }
-      });
+    try {
+      final response = await _userService.getProfile();
+      if (mounted && response['success'] == true && response['data'] != null) {
+        final uData = response['data'];
+        setState(() {
+          _profilePhotoUrl = uData['profilePhoto'];
+          if (uData['firstName'] != null) {
+            _profileName = '${uData['firstName']} ${uData['lastName'] ?? ''}'.trim();
+          } else {
+            _profileName = uData['name'];
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[ExpenseScreen] Error fetching profile: $e');
     }
   }
 
-  Future<void> _fetchTripsAndExpenses() async {
+  Future<void> _fetchUserTrips() async {
     try {
       final tripsRes = await _tripService.getTrips();
-      debugPrint('[ExpenseScreen] Trips response: $tripsRes');
-
       if (tripsRes['success'] == true && tripsRes['data'] != null) {
         final List tripsList = tripsRes['data'];
-        _userTrips = tripsList.map<Map<String, dynamic>>((t) => Map<String, dynamic>.from(t)).toList();
+        _tripNameToIdMap.clear();
+        final List<String> options = ['All Trips'];
 
-        double globalTotalExpense = 0;
-        double globalMySpending = 0;
-        double globalNeedToPay = 0;
-        double globalNeedToReceive = 0;
-
-        List<Map<String, dynamic>> processedTrips = [];
-        Map<String, dynamic> payMap = {};
-        Map<String, dynamic> receiveMap = {};
-        Map<String, double> categoryTotals = {};
-
-        for (var trip in _userTrips) {
-          final String tripId = (trip['_id'] ?? trip['id']).toString();
-          final String tripName = trip['title'] ?? trip['destination'] ?? 'Trip';
-          
-          final String startDateStr = trip['startDate'] ?? '';
-          final String endDateStr = trip['endDate'] ?? '';
-          String dateFormatted = 'Dates TBD';
-          if (startDateStr.isNotEmpty && endDateStr.isNotEmpty) {
-            try {
-              final d1 = DateTime.parse(startDateStr);
-              final d2 = DateTime.parse(endDateStr);
-              dateFormatted = '${DateFormat('MMM d').format(d1)} - ${DateFormat('MMM d, yyyy').format(d2)}';
-            } catch (_) {}
-          }
-
-          // Determine status
-          bool isActive = true;
-          String statusStr = 'Active';
-          if (endDateStr.isNotEmpty) {
-            try {
-              final endDt = DateTime.parse(endDateStr);
-              if (endDt.isBefore(DateTime.now())) {
-                isActive = false;
-                statusStr = 'Completed';
-              }
-            } catch (_) {}
-          }
-
-          // Fetch Summary for this trip
-          final summaryRes = await _expenseService.getSummary(tripId);
-          debugPrint('[ExpenseScreen] Summary response for $tripId: $summaryRes');
-          double tripTotal = 0;
-          double tripMine = 0;
-          double tripOwedByYou = 0;
-          double tripOwedToYou = 0;
-
-          if (summaryRes['success'] == true && summaryRes['data'] != null) {
-            final sData = summaryRes['data'];
-            tripTotal = ((sData['totalExpense'] ?? 0) as num).toDouble();
-            tripMine = ((sData['mySpending'] ?? 0) as num).toDouble();
-            tripOwedByYou = ((sData['owedByYou'] ?? 0) as num).toDouble();
-            tripOwedToYou = ((sData['owedToYou'] ?? 0) as num).toDouble();
-          }
-
-          // Fetch balances to identify who needs to pay/receive
-          final balancesRes = await _expenseService.getBalances(tripId);
-          debugPrint('[ExpenseScreen] Balances response for $tripId: $balancesRes');
-          if (balancesRes['success'] == true && balancesRes['data'] != null) {
-            final bData = balancesRes['data'];
-            List obyList = [];
-            List otyList = [];
-            if (bData is Map) {
-              obyList = bData['owedByYou'] as List? ?? [];
-              otyList = bData['owedToYou'] as List? ?? [];
-            } else if (bData is List) {
-              for (var item in bData) {
-                final double net = ((item['netBalance'] ?? 0) as num).toDouble();
-                final String name = item['userName'] ?? item['name'] ?? 'Member';
-                if (net < 0) {
-                  payMap[name] = (payMap[name] ?? 0.0) + net.abs();
-                  tripOwedByYou += net.abs();
-                } else if (net > 0) {
-                  receiveMap[name] = (receiveMap[name] ?? 0.0) + net;
-                  tripOwedToYou += net;
-                }
-              }
-            }
-
-            for (var item in obyList) {
-              String name = 'Member';
-              if (item['userName'] != null && item['userName'].toString().isNotEmpty) {
-                name = item['userName'].toString();
-              } else if (item['name'] != null) {
-                if (item['name'] is String) {
-                  name = item['name'];
-                } else if (item['name'] is Map) {
-                  name = item['name']['name'] ?? item['name']['userName'] ?? item['name']['firstName'] ?? 'Member';
-                }
-              }
-              final double amt = ((item['amount'] ?? 0) as num).toDouble();
-              payMap[name] = (payMap[name] ?? 0.0) + amt;
-            }
-
-            for (var item in otyList) {
-              String name = 'Member';
-              if (item['userName'] != null && item['userName'].toString().isNotEmpty) {
-                name = item['userName'].toString();
-              } else if (item['name'] != null) {
-                if (item['name'] is String) {
-                  name = item['name'];
-                } else if (item['name'] is Map) {
-                  name = item['name']['name'] ?? item['name']['userName'] ?? item['name']['firstName'] ?? 'Member';
-                }
-              }
-              final double amt = ((item['amount'] ?? 0) as num).toDouble();
-              receiveMap[name] = (receiveMap[name] ?? 0.0) + amt;
+        for (var trip in tripsList) {
+          final id = (trip['_id'] ?? trip['id'] ?? '').toString();
+          String name = 'Trip';
+          if (trip['name'] != null && trip['name'].toString().trim().isNotEmpty) {
+            name = trip['name'].toString().trim();
+          } else if (trip['title'] != null && trip['title'].toString().trim().isNotEmpty) {
+            name = trip['title'].toString().trim();
+          } else if (trip['destination'] != null) {
+            if (trip['destination'] is Map && trip['destination']['name'] != null) {
+              name = trip['destination']['name'].toString().trim();
+            } else if (trip['destination'] is String && trip['destination'].toString().trim().isNotEmpty) {
+              name = trip['destination'].toString().trim();
             }
           }
-
-          // Fetch Expenses to calculate Category Breakdown & my spending fallback
-          final expensesRes = await _expenseService.getExpenses(tripId, filter: 'all');
-          debugPrint('[ExpenseScreen] Expenses response for $tripId: $expensesRes');
-          if (expensesRes['success'] == true && expensesRes['data'] != null) {
-            final List expList = expensesRes['data'];
-            double expSum = 0;
-            double myExpSum = 0;
-            for (var exp in expList) {
-              final double amt = ((exp['amount'] ?? 0) as num).toDouble();
-              expSum += amt;
-
-              final String cat = (exp['category'] ?? 'other').toString().toLowerCase();
-              categoryTotals[cat] = (categoryTotals[cat] ?? 0.0) + amt;
-
-              bool isMyExpense = exp['isCreatedByMe'] == true;
-              if (!isMyExpense && exp['paidBy'] != null) {
-                final paidBy = exp['paidBy'];
-                if (paidBy['userId'] != null && paidBy['userId'].toString() == _currentUserId) {
-                  isMyExpense = true;
-                }
-              }
-
-              if (isMyExpense) {
-                myExpSum += amt;
-              }
+          if (id.isNotEmpty) {
+            _tripNameToIdMap[name] = id;
+            if (!options.contains(name)) {
+              options.add(name);
             }
-
-            if (tripTotal == 0) tripTotal = expSum;
-            if (tripMine == 0) tripMine = myExpSum;
           }
-
-          globalTotalExpense += tripTotal;
-          globalMySpending += tripMine;
-          globalNeedToPay += tripOwedByYou;
-          globalNeedToReceive += tripOwedToYou;
-
-          final currencyFormatter = NumberFormat('#,##0', 'en_US');
-          processedTrips.add({
-            'id': tripId,
-            'name': tripName,
-            'date': dateFormatted,
-            'total': '₹${currencyFormatter.format(tripTotal.toInt())}',
-            'totalSub': '₹${currencyFormatter.format(tripTotal.toInt())} spent',
-            'mine': '₹${currencyFormatter.format(tripMine.toInt())}',
-            'pay': '₹${currencyFormatter.format(tripOwedByYou.toInt())}',
-            'receive': '₹${currencyFormatter.format(tripOwedToYou.toInt())}',
-            'status': statusStr,
-            'isActive': isActive,
-            'rawTotal': tripTotal,
-          });
         }
 
-        _totalExpensesAllTrips = globalTotalExpense;
-        _mySpendingAllTrips = globalMySpending;
-        _totalNeedToPay = globalNeedToPay;
-        _totalNeedToReceive = globalNeedToReceive;
+        if (mounted) {
+          setState(() {
+            _tripFilterOptions = options;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('[ExpenseScreen] Error fetching trips list: $e');
+    }
+  }
 
-        _tripDetailsData = processedTrips;
+  Future<void> _fetchUserExpenseOverview() async {
+    try {
+      final currencyFormatter = NumberFormat('#,##0', 'en_US');
+      final res = await _expenseService.getUserExpenseOverview(
+        tripId: _selectedTripId,
+        category: _selectedCategory != 'All Categories' ? _selectedCategory : null,
+        timePeriod: _selectedMonth,
+        startDate: _selectedStartDate != null ? DateFormat('yyyy-MM-dd').format(_selectedStartDate!) : null,
+        endDate: _selectedEndDate != null ? DateFormat('yyyy-MM-dd').format(_selectedEndDate!) : null,
+      );
 
-        // Process Need To Pay Data
-        final currencyFormatter = NumberFormat('#,##0', 'en_US');
-        _needToPayData = payMap.entries.map((e) => {
-          'name': e.key,
-          'amount': '₹${currencyFormatter.format(e.value.toInt())}',
+      debugPrint('[ExpenseScreen] User overview response: $res');
+
+      if (res['success'] == true && res['data'] != null) {
+        final data = res['data'];
+
+        // 1. Summary Cards
+        final summary = data['summary'] ?? {};
+        final totalExp = ((summary['totalExpenses'] ?? 0) as num).toDouble();
+        final mySpend = ((summary['mySpending'] ?? 0) as num).toDouble();
+        final needPay = ((summary['needToPay'] ?? 0) as num).toDouble();
+        final needRec = ((summary['needToReceive'] ?? 0) as num).toDouble();
+
+        // 2. Categories Breakdown
+        final rawCats = data['categories'] as List? ?? [];
+        final List<Map<String, dynamic>> cats = rawCats.map((c) {
+          return {
+            'category': c['category']?.toString() ?? 'Others',
+            'spent': ((c['spent'] ?? 0) as num).toDouble(),
+            'pct': ((c['percentage'] ?? 0) as num).round(),
+            'color': _parseHexColor(c['color']),
+            'icon': _parseIcon(c['icon']),
+          };
+        }).toList();
+
+        // 3. Trend Graph & Sparkline
+        final trend = data['trend'] ?? {};
+        final monthlyTrend = trend['monthlyTrend'] as List? ?? [];
+        final List<String> labels = [];
+        final List<FlSpot> spots = [];
+        double maxVal = 0;
+
+        for (int i = 0; i < monthlyTrend.length; i++) {
+          final item = monthlyTrend[i];
+          labels.add(item['month']?.toString() ?? '');
+          final double amt = ((item['amount'] ?? 0) as num).toDouble();
+          if (amt > maxVal) maxVal = amt;
+          spots.add(FlSpot(i.toDouble(), amt));
+        }
+
+        final rawSpark = trend['sparklineData'] as List? ?? [];
+        List<double> sparkData = rawSpark.map((v) => (v as num).toDouble()).toList();
+        if (sparkData.length < 2) sparkData = [0, 0, 0, 0, 0, 0];
+
+        final double avg = ((trend['monthlyAverage'] ?? 0) as num).toDouble();
+        final double pChange = ((trend['percentChange'] ?? 0) as num).toDouble();
+        final bool isUp = trend['isUp'] == true;
+        double chartMaxY = maxVal > 0 ? (((maxVal * 1.25) / 1000).ceil() * 1000.0) : 10000;
+        if (chartMaxY < 1000) chartMaxY = 1000;
+
+        // 4. Trip Wise Details Table
+        final rawTrips = data['tripWiseDetails'] as List? ?? [];
+        final List<Map<String, dynamic>> trips = rawTrips.map((t) {
+          final userExp = ((t['userExpense'] ?? 0) as num).toDouble();
+          final tripTotal = ((t['tripTotalExpense'] ?? 0) as num).toDouble();
+          final mySpent = ((t['mySpending'] ?? 0) as num).toDouble();
+          final pay = ((t['needToPay'] ?? 0) as num).toDouble();
+          final rec = ((t['needToReceive'] ?? 0) as num).toDouble();
+
+          return {
+            'id': t['tripId']?.toString(),
+            'name': t['tripName']?.toString() ?? 'Trip',
+            'date': t['dateFormatted']?.toString() ?? '',
+            'total': '₹${currencyFormatter.format(userExp.toInt())}',
+            'totalSub': 'Trip Total: ₹${currencyFormatter.format(tripTotal.toInt())}',
+            'mine': '₹${currencyFormatter.format(mySpent.toInt())}',
+            'pay': '₹${currencyFormatter.format(pay.toInt())}',
+            'receive': '₹${currencyFormatter.format(rec.toInt())}',
+            'status': t['status']?.toString() ?? 'Active',
+            'isActive': t['isActive'] == true,
+            'rawTrip': t['rawTrip'],
+          };
+        }).toList();
+
+        // 5. Payment Splits
+        final splits = data['paymentSplits'] ?? {};
+        final rawWhoPay = splits['whoYouNeedToPay'] as List? ?? [];
+        final rawWhoRec = splits['whoNeedsToPayYou'] as List? ?? [];
+
+        final List<Map<String, dynamic>> payList = rawWhoPay.map((p) => {
+          'name': p['name']?.toString() ?? 'Member',
+          'amount': '₹${currencyFormatter.format(((p['amount'] ?? 0) as num).toInt())}',
           'color': const Color(0xFFEF4444),
         }).toList();
 
-        // Process Needs To Pay You Data
-        _needsToPayYouData = receiveMap.entries.map((e) => {
-          'name': e.key,
-          'amount': '₹${currencyFormatter.format(e.value.toInt())}',
+        final List<Map<String, dynamic>> recList = rawWhoRec.map((p) => {
+          'name': p['name']?.toString() ?? 'Member',
+          'amount': '₹${currencyFormatter.format(((p['amount'] ?? 0) as num).toInt())}',
           'color': const Color(0xFF20C060),
         }).toList();
 
-        // Process Category Breakdown
-        _categoryExpenses = _processCategoryBreakdown(categoryTotals, globalTotalExpense);
+        if (mounted) {
+          setState(() {
+            _totalExpensesAllTrips = totalExp;
+            _mySpendingAllTrips = mySpend;
+            _totalNeedToPay = needPay;
+            _totalNeedToReceive = needRec;
+            _categoryExpenses = cats;
+            _trendMonthLabels = labels;
+            _trendSpots = spots;
+            _sparklineData = sparkData;
+            _monthlyAverage = avg;
+            _trendPercentChange = pChange;
+            _trendIsUp = isUp;
+            _trendMaxY = chartMaxY;
+            _tripDetailsData = trips;
+            _needToPayData = payList;
+            _needsToPayYouData = recList;
+          });
+        }
       }
-    } catch (e) {
-      debugPrint('Error loading dynamic expense data: $e');
+    } catch (e, stack) {
+      debugPrint('[ExpenseScreen] Error fetching user expense overview: $e\n$stack');
     }
   }
 
-  List<Map<String, dynamic>> _processCategoryBreakdown(Map<String, double> catMap, double total) {
-    if (catMap.isEmpty || total <= 0) return [];
+  Color _parseHexColor(dynamic hexStr) {
+    if (hexStr is String && hexStr.startsWith('#')) {
+      final hex = hexStr.replaceFirst('#', '');
+      if (hex.length == 6) {
+        return Color(int.parse('FF$hex', radix: 16));
+      }
+    }
+    return const Color(0xFF1E5AE6);
+  }
 
-    final Map<String, Map<String, dynamic>> catMeta = {
-      'accommodation': {'label': 'Accommodation', 'color': const Color(0xFF3B82F6), 'icon': Icons.hotel_outlined},
-      'hotel': {'label': 'Accommodation', 'color': const Color(0xFF3B82F6), 'icon': Icons.hotel_outlined},
-      'travel': {'label': 'Transportation', 'color': const Color(0xFF00C6FF), 'icon': Icons.flight_takeoff_outlined},
-      'transport': {'label': 'Transportation', 'color': const Color(0xFF00C6FF), 'icon': Icons.flight_takeoff_outlined},
-      'food': {'label': 'Food & Dining', 'color': const Color(0xFF20C060), 'icon': Icons.restaurant_menu_outlined},
-      'activities': {'label': 'Activities', 'color': const Color(0xFFF59E0B), 'icon': Icons.local_activity_outlined},
-      'tickets': {'label': 'Tickets', 'color': const Color(0xFF06B6D4), 'icon': Icons.local_activity_outlined},
-      'shopping': {'label': 'Shopping', 'color': const Color(0xFF8B5CF6), 'icon': Icons.shopping_bag_outlined},
-      'medical': {'label': 'Medical', 'color': const Color(0xFFEF4444), 'icon': Icons.medical_services_outlined},
-      'other': {'label': 'Others', 'color': const Color(0xFFCBD5E1), 'icon': Icons.more_horiz_outlined},
-    };
-
-    Map<String, double> aggregated = {};
-    catMap.forEach((key, value) {
-      final label = catMeta[key]?['label'] ?? 'Others';
-      aggregated[label] = (aggregated[label] ?? 0.0) + value;
-    });
-
-    List<Map<String, dynamic>> result = [];
-    aggregated.forEach((label, amt) {
-      final meta = catMeta.values.firstWhere((m) => m['label'] == label, orElse: () => {
-        'label': label,
-        'color': const Color(0xFF8B5CF6),
-        'icon': Icons.category_outlined,
-      });
-
-      final int pct = total > 0 ? ((amt / total) * 100).round() : 0;
-      result.add({
-        'category': label,
-        'spent': amt,
-        'pct': pct,
-        'color': meta['color'],
-        'icon': meta['icon'],
-      });
-    });
-
-    result.sort((a, b) => (b['spent'] as double).compareTo(a['spent'] as double));
-    return result;
+  IconData _parseIcon(dynamic iconStr) {
+    switch (iconStr) {
+      case 'hotel':
+        return Icons.hotel_outlined;
+      case 'flight_takeoff':
+        return Icons.flight_takeoff_outlined;
+      case 'restaurant':
+        return Icons.restaurant_menu_outlined;
+      case 'local_activity':
+        return Icons.local_activity_outlined;
+      case 'confirmation_number':
+        return Icons.confirmation_number_outlined;
+      case 'shopping_bag':
+        return Icons.shopping_bag_outlined;
+      case 'medical_services':
+        return Icons.medical_services_outlined;
+      default:
+        return Icons.category_outlined;
+    }
   }
 
   @override
@@ -331,6 +309,18 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
               title: 'Expense',
               profilePhotoUrl: _profilePhotoUrl,
               profileName: _profileName,
+              onProfileTap: () {
+                if (widget.onProfileTap != null) {
+                  widget.onProfileTap!();
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ProfileScreen(),
+                    ),
+                  );
+                }
+              },
             ),
             Expanded(
               child: _isLoading
@@ -339,25 +329,29 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                         valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E5AE6)),
                       ),
                     )
-                  : SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 20),
-                            _buildFilters(),
-                            const SizedBox(height: 20),
-                            _buildSummaryCards(),
-                            const SizedBox(height: 28),
-                            _buildExpenseOverviewSection(),
-                            const SizedBox(height: 28),
-                            _buildTripWiseDetailsSection(),
-                            const SizedBox(height: 28),
-                            _buildPaymentSplitsSection(),
-                            const SizedBox(height: 32),
-                          ],
+                  : RefreshIndicator(
+                      onRefresh: _loadAllData,
+                      color: const Color(0xFF1E5AE6),
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 20),
+                              _buildFilters(),
+                              const SizedBox(height: 20),
+                              _buildSummaryCards(),
+                              const SizedBox(height: 28),
+                              _buildExpenseOverviewSection(),
+                              const SizedBox(height: 28),
+                              _buildTripWiseDetailsSection(),
+                              const SizedBox(height: 28),
+                              _buildPaymentSplitsSection(),
+                              const SizedBox(height: 32),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -367,8 +361,6 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
       ),
     );
   }
-
-
 
   // --- Filters ---
   Widget _buildFilters() {
@@ -381,9 +373,12 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             icon: Icons.card_membership_outlined,
             label: _selectedTrip,
             onTap: () {
-              final List<String> tripOptions = ['All Trips', ..._userTrips.map((t) => (t['title'] ?? t['destination'] ?? 'Trip').toString())];
-              _showFilterOptions('Trips', tripOptions, (val) {
-                setState(() => _selectedTrip = val);
+              _showFilterOptions('Trips', _tripFilterOptions, (val) {
+                setState(() {
+                  _selectedTrip = val;
+                  _selectedTripId = val == 'All Trips' ? null : _tripNameToIdMap[val];
+                });
+                _fetchUserExpenseOverview();
               });
             },
           ),
@@ -392,24 +387,94 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             icon: Icons.grid_view_outlined,
             label: _selectedCategory,
             onTap: () {
-              _showFilterOptions('Categories', ['All Categories', 'Food', 'Transport'], (val) {
-                setState(() => _selectedCategory = val);
+              final categories = [
+                'All Categories',
+                'Accommodation',
+                'Transportation',
+                'Food & Dining',
+                'Activities',
+                'Tickets',
+                'Shopping',
+                'Medical',
+                'Others',
+              ];
+              _showFilterOptions('Categories', categories, (val) {
+                setState(() {
+                  _selectedCategory = val;
+                });
+                _fetchUserExpenseOverview();
               });
             },
           ),
           const SizedBox(width: 10),
-          _buildFilterDropdown(
-            icon: Icons.calendar_month_outlined,
-            label: _selectedMonth,
-            onTap: () {
-              _showFilterOptions('Time', ['This Month', 'Last Month', 'Custom Range'], (val) {
-                setState(() => _selectedMonth = val);
-              });
-            },
-          ),
+          _buildCalendarButton(),
         ],
       ),
     );
+  }
+
+  Widget _buildCalendarButton() {
+    return GestureDetector(
+      onTap: _showTimeFilterPicker,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFF1F5F9)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x04000000),
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(Icons.calendar_month_outlined, size: 18, color: AppColors.textSecondary),
+      ),
+    );
+  }
+
+  void _showTimeFilterPicker() {
+    _showFilterOptions('Time Period', ['This Month', 'Last Month', 'All Time', 'Custom Date Range'], (val) async {
+      if (val == 'Custom Date Range') {
+        final picked = await showDateRangePicker(
+          context: context,
+          firstDate: DateTime(2020),
+          lastDate: DateTime(2035),
+          initialDateRange: _selectedStartDate != null && _selectedEndDate != null
+              ? DateTimeRange(start: _selectedStartDate!, end: _selectedEndDate!)
+              : null,
+          builder: (context, child) {
+            return Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: const ColorScheme.light(
+                  primary: Color(0xFF1E5AE6),
+                  onPrimary: Colors.white,
+                  onSurface: AppColors.textPrimary,
+                ),
+              ),
+              child: child!,
+            );
+          },
+        );
+        if (picked != null) {
+          setState(() {
+            _selectedStartDate = picked.start;
+            _selectedEndDate = picked.end;
+            _selectedMonth = '${DateFormat('MMM d').format(picked.start)} - ${DateFormat('MMM d').format(picked.end)}';
+          });
+          _fetchUserExpenseOverview();
+        }
+      } else {
+        setState(() {
+          _selectedStartDate = null;
+          _selectedEndDate = null;
+          _selectedMonth = val;
+        });
+        _fetchUserExpenseOverview();
+      }
+    });
   }
 
   Widget _buildFilterDropdown({
@@ -456,29 +521,46 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
   void _showFilterOptions(String title, List<String> options, Function(String) onSelect) {
     showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Select $title',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              ...options.map((opt) => ListTile(
-                    title: Text(opt),
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                  child: Text(
+                    'Select $title',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                  ),
+                ),
+                const Divider(color: Color(0xFFF1F5F9)),
+                ...options.map((opt) {
+                  final isSelected = opt == _selectedTrip || opt == _selectedCategory || opt == _selectedMonth;
+                  return ListTile(
+                    title: Text(
+                      opt,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected ? const Color(0xFF1E5AE6) : AppColors.textPrimary,
+                      ),
+                    ),
+                    trailing: isSelected ? const Icon(Icons.check, color: Color(0xFF1E5AE6), size: 20) : null,
                     onTap: () {
-                      onSelect(opt);
                       Navigator.pop(context);
+                      onSelect(opt);
                     },
-                  )),
-            ],
+                  );
+                }),
+              ],
+            ),
           ),
         );
       },
@@ -497,7 +579,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
               child: _buildSummaryCard(
                 title: 'Total Expenses',
                 value: '₹${currencyFormatter.format(_totalExpensesAllTrips.toInt())}',
-                caption: 'All trips combined',
+                caption: _selectedTrip == 'All Trips' ? 'Your total share' : 'Your trip expense',
                 icon: Icons.account_balance_wallet,
                 accentColor: const Color(0xFF1E5AE6),
               ),
@@ -507,7 +589,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
               child: _buildSummaryCard(
                 title: 'My Spending',
                 value: '₹${currencyFormatter.format(_mySpendingAllTrips.toInt())}',
-                caption: 'You have spent',
+                caption: 'You have paid',
                 icon: Icons.credit_card_outlined,
                 accentColor: const Color(0xFF20C060),
               ),
@@ -554,10 +636,10 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accentColor.withOpacity(0.15), width: 1.5),
+        border: Border.all(color: accentColor.withValues(alpha: 0.15), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withOpacity(0.06),
+            color: accentColor.withValues(alpha: 0.06),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -570,7 +652,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: accentColor.withOpacity(0.1),
+              color: accentColor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: accentColor, size: 24),
@@ -586,13 +668,16 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            value,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-              color: accentColor,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: accentColor,
+              ),
             ),
           ),
           const SizedBox(height: 2),
@@ -625,22 +710,25 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                 color: AppColors.textPrimary,
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Row(
-                children: const [
-                  Text(
-                    'This Month',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(Icons.keyboard_arrow_down, size: 14, color: AppColors.textSecondary),
-                ],
+            GestureDetector(
+              onTap: _showTimeFilterPicker,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      _selectedMonth,
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.keyboard_arrow_down, size: 14, color: AppColors.textSecondary),
+                  ],
+                ),
               ),
             ),
           ],
@@ -720,11 +808,17 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
-                                  _totalExpensesAllTrips >= 100000
-                                      ? '₹${(_totalExpensesAllTrips / 100000).toStringAsFixed(1)}L'
-                                      : '₹${NumberFormat('#,##0', 'en_US').format(_totalExpensesAllTrips.toInt())}',
-                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                    child: Text(
+                                      _totalExpensesAllTrips >= 100000
+                                          ? '₹${(_totalExpensesAllTrips / 100000).toStringAsFixed(1)}L'
+                                          : '₹${NumberFormat('#,##0', 'en_US').format(_totalExpensesAllTrips.toInt())}',
+                                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                                    ),
+                                  ),
                                 ),
                                 const Text(
                                   'Total',
@@ -790,19 +884,27 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8FDF0),
+                      color: _trendIsUp ? const Color(0xFFE8FDF0) : const Color(0xFFFEE2E2),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
-                      children: const [
-                        Icon(Icons.arrow_upward, size: 10, color: Color(0xFF20C060)),
-                        SizedBox(width: 2),
-                        Text(
-                          '18.6%',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF20C060)),
+                      children: [
+                        Icon(
+                          _trendIsUp ? Icons.arrow_upward : Icons.arrow_downward,
+                          size: 10,
+                          color: _trendIsUp ? const Color(0xFF20C060) : const Color(0xFFEF4444),
                         ),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 2),
                         Text(
+                          '${_trendPercentChange.toStringAsFixed(1)}%',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: _trendIsUp ? const Color(0xFF20C060) : const Color(0xFFEF4444),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Text(
                           'vs last month',
                           style: TextStyle(fontSize: 8, color: AppColors.textSecondary),
                         ),
@@ -819,7 +921,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
-                      horizontalInterval: 10000,
+                      horizontalInterval: (_trendMaxY / 4).clamp(100.0, double.infinity),
                       getDrawingHorizontalLine: (value) => FlLine(
                         color: const Color(0xFFF1F5F9),
                         strokeWidth: 1,
@@ -832,25 +934,27 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                       leftTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          interval: 10000,
+                          interval: (_trendMaxY / 4).clamp(100.0, double.infinity),
                           getTitlesWidget: (value, meta) {
                             if (value == 0) return const Text('0', style: TextStyle(color: AppColors.textLight, fontSize: 10));
-                            return Text('${(value / 1000).toInt()}K', style: const TextStyle(color: AppColors.textLight, fontSize: 10));
+                            if (value >= 1000) {
+                              return Text('${(value / 1000).toInt()}K', style: const TextStyle(color: AppColors.textLight, fontSize: 10));
+                            }
+                            return Text('${value.toInt()}', style: const TextStyle(color: AppColors.textLight, fontSize: 10));
                           },
-                          reservedSize: 28,
+                          reservedSize: 32,
                         ),
                       ),
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
                           getTitlesWidget: (value, meta) {
-                            switch (value.toInt()) {
-                              case 0: return const Text('May', style: TextStyle(color: AppColors.textSecondary, fontSize: 11));
-                              case 1: return const Text('Jun', style: TextStyle(color: AppColors.textSecondary, fontSize: 11));
-                              case 2: return const Text('Jul', style: TextStyle(color: AppColors.textSecondary, fontSize: 11));
-                              case 3: return const Text('Aug', style: TextStyle(color: AppColors.textSecondary, fontSize: 11));
-                              case 4: return const Text('Sep', style: TextStyle(color: AppColors.textSecondary, fontSize: 11));
-                              case 5: return const Text('Oct', style: TextStyle(color: AppColors.textSecondary, fontSize: 11));
+                            final idx = value.toInt();
+                            if (idx >= 0 && idx < _trendMonthLabels.length) {
+                              return Text(
+                                _trendMonthLabels[idx],
+                                style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                              );
                             }
                             return const Text('');
                           },
@@ -862,17 +966,19 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                     minX: 0,
                     maxX: 5,
                     minY: 0,
-                    maxY: 40000,
+                    maxY: _trendMaxY,
                     lineBarsData: [
                       LineChartBarData(
-                        spots: const [
-                          FlSpot(0, 18000),
-                          FlSpot(1, 24000),
-                          FlSpot(2, 20000),
-                          FlSpot(3, 32000),
-                          FlSpot(4, 22000),
-                          FlSpot(5, 12000),
-                        ],
+                        spots: _trendSpots.isNotEmpty
+                            ? _trendSpots
+                            : const [
+                                FlSpot(0, 0),
+                                FlSpot(1, 0),
+                                FlSpot(2, 0),
+                                FlSpot(3, 0),
+                                FlSpot(4, 0),
+                                FlSpot(5, 0),
+                              ],
                         isCurved: true,
                         color: const Color(0xFF20C060),
                         barWidth: 3,
@@ -890,8 +996,8 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                           show: true,
                           gradient: LinearGradient(
                             colors: [
-                              const Color(0xFF20C060).withOpacity(0.24),
-                              const Color(0xFF20C060).withOpacity(0.0),
+                              const Color(0xFF20C060).withValues(alpha: 0.24),
+                              const Color(0xFF20C060).withValues(alpha: 0.0),
                             ],
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
@@ -924,15 +1030,15 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                     const SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
+                      children: [
+                        const Text(
                           'Average Expense / Month',
                           style: TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
-                          '₹21,333',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          '₹${NumberFormat('#,##0', 'en_US').format(_monthlyAverage.toInt())}',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                         ),
                       ],
                     ),
@@ -942,7 +1048,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                       height: 24,
                       child: CustomPaint(
                         painter: SparklinePainter(
-                          data: [18, 24, 20, 32, 22, 12],
+                          data: _sparklineData,
                           color: const Color(0xFF20C060),
                         ),
                       ),
@@ -1009,66 +1115,102 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
               'Trip Wise Details',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
             ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _showAllTrips = !_showAllTrips;
-                });
-              },
-              child: Text(
-                _showAllTrips ? 'Show Less' : 'View All',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E5AE6)),
+            if (_tripDetailsData.length > 3)
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _showAllTrips = !_showAllTrips;
+                  });
+                },
+                child: Text(
+                  _showAllTrips ? 'Show Less' : 'View All',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E5AE6)),
+                ),
               ),
-            ),
           ],
         ),
         const SizedBox(height: 10),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFF1F5F9)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x04000000),
-                blurRadius: 10,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columnSpacing: 20,
-              horizontalMargin: 16,
-              headingRowHeight: 40,
-              dataRowMinHeight: 52,
-              dataRowMaxHeight: 56,
-              columns: const [
-                DataColumn(label: Text('Trip', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
-                DataColumn(label: Text('Total Expense', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
-                DataColumn(label: Text('My Spending', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
-                DataColumn(label: Text('Need to Pay', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
-                DataColumn(label: Text('Need to Receive', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
-                DataColumn(label: Text('Status', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
-                DataColumn(label: Text('', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
+        if (_tripDetailsData.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFF1F5F9)),
+            ),
+            child: Column(
+              children: const [
+                Icon(Icons.flight_takeoff, size: 36, color: AppColors.textLight),
+                SizedBox(height: 8),
+                Text('No trips found', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                SizedBox(height: 4),
+                Text('Create or join a trip to track expenses', style: TextStyle(fontSize: 11, color: AppColors.textLight)),
               ],
-              rows: displayTrips.map((trip) {
-                return _buildTripRow(
-                  name: trip['name'],
-                  date: trip['date'],
-                  total: trip['total'],
-                  totalSub: trip['totalSub'],
-                  mine: trip['mine'],
-                  pay: trip['pay'],
-                  receive: trip['receive'],
-                  status: trip['status'],
-                  isActive: trip['isActive'],
-                );
-              }).toList(),
+            ),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFF1F5F9)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x04000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                showCheckboxColumn: false,
+                columnSpacing: 20,
+                horizontalMargin: 16,
+                headingRowHeight: 40,
+                dataRowMinHeight: 52,
+                dataRowMaxHeight: 56,
+                columns: const [
+                  DataColumn(label: Text('Trip', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
+                  DataColumn(label: Text('Total Expense', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
+                  DataColumn(label: Text('My Spending', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
+                  DataColumn(label: Text('Need to Pay', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
+                  DataColumn(label: Text('Need to Receive', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
+                  DataColumn(label: Text('Status', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
+                  DataColumn(label: Text('', style: TextStyle(fontSize: 10, color: AppColors.textLight, fontWeight: FontWeight.w600))),
+                ],
+                rows: displayTrips.map((trip) {
+                  return _buildTripRow(
+                    name: trip['name'],
+                    date: trip['date'],
+                    total: trip['total'],
+                    totalSub: trip['totalSub'],
+                    mine: trip['mine'],
+                    pay: trip['pay'],
+                    receive: trip['receive'],
+                    status: trip['status'],
+                    isActive: trip['isActive'],
+                    onTap: () {
+                      if (trip['rawTrip'] != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => TripExpenseScreen(
+                              tripData: trip['rawTrip'],
+                              profilePhotoUrl: _profilePhotoUrl,
+                              profileName: _profileName,
+                            ),
+                          ),
+                        ).then((_) => _loadAllData());
+                      }
+                    },
+                  );
+                }).toList(),
+              ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -1083,8 +1225,10 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     required String receive,
     required String status,
     required bool isActive,
+    required VoidCallback onTap,
   }) {
     return DataRow(
+      onSelectChanged: (_) => onTap(),
       cells: [
         DataCell(
           Column(
@@ -1131,6 +1275,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     );
   }
 
+  // --- Payment Splits ---
   Widget _buildPaymentSplitsSection() {
     final displayNeedToPay = _showAllNeedToPay ? _needToPayData : _needToPayData.take(3).toList();
     final displayNeedsToPayYou = _showAllNeedsToPayYou ? _needsToPayYouData : _needsToPayYouData.take(3).toList();
@@ -1146,17 +1291,18 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Who You Need to Pay', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _showAllNeedToPay = !_showAllNeedToPay;
-                    });
-                  },
-                  child: Text(
-                    _showAllNeedToPay ? 'Show Less' : 'View All',
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1E5AE6)),
+                if (_needToPayData.length > 3)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _showAllNeedToPay = !_showAllNeedToPay;
+                      });
+                    },
+                    child: Text(
+                      _showAllNeedToPay ? 'Show Less' : 'View All',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1E5AE6)),
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -1198,17 +1344,18 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Who Needs to Pay You', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _showAllNeedsToPayYou = !_showAllNeedsToPayYou;
-                    });
-                  },
-                  child: Text(
-                    _showAllNeedsToPayYou ? 'Show Less' : 'View All',
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1E5AE6)),
+                if (_needsToPayYouData.length > 3)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _showAllNeedsToPayYou = !_showAllNeedsToPayYou;
+                      });
+                    },
+                    child: Text(
+                      _showAllNeedsToPayYou ? 'Show Less' : 'View All',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1E5AE6)),
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 10),
@@ -1245,7 +1392,6 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     );
   }
 
-
   Widget _buildSplitItem(String name, String amount, Color color) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1269,7 +1415,7 @@ class SparklinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (data.isEmpty) return;
+    if (data.isEmpty || data.length < 2) return;
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
@@ -1295,5 +1441,7 @@ class SparklinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant SparklinePainter oldDelegate) {
+    return oldDelegate.data != data || oldDelegate.color != color;
+  }
 }

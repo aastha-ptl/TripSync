@@ -239,28 +239,7 @@ class _SoloTravelerDashboardScreenState extends State<SoloTravelerDashboardScree
       final res = await _tripService.getTripParticipants(tripId.toString());
       if (res['success'] == true && res['data'] is List && mounted) {
         final List<dynamic> rawData = res['data'];
-        int total = 0;
-        for (var p in rawData) {
-          final role = p['role']?.toString().toLowerCase() ?? '';
-          final type = p['type']?.toString().toLowerCase() ?? '';
-          final group = p['group']?.toString().toLowerCase() ?? '';
-          final fm = p['familyMembers'] as List<dynamic>? ?? [];
-
-          final hasFamily = fm.isNotEmpty;
-          final isFamily = hasFamily &&
-              (type == 'family' ||
-                  group.contains('family') ||
-                  role == 'familyleader' ||
-                  role == 'family_leader' ||
-                  role == 'tripleader' ||
-                  role == 'trip_leader');
-
-          if (isFamily) {
-            total += 1 + fm.length;
-          } else {
-            total += 1;
-          }
-        }
+        final total = TripInfoHelper.calculateTotalTripMembers(rawData);
         if (total > 0 && mounted) {
           setState(() {
             _membersCount = total;
@@ -690,7 +669,16 @@ String _getTripDuration() {
             subtitle: 'Trip summary',
             textColor: const Color(0xFFEA580C),
             onTap: () {
-              Navigator.pushNamed(context, AppRoutes.tripOverview, arguments: {'tripData': widget.tripData});
+              Navigator.pushNamed(
+                context,
+                AppRoutes.tripOverview,
+                arguments: {
+                  'tripData': {
+                    ...?widget.tripData,
+                    if (_membersCount != null) 'membersCount': _membersCount,
+                  },
+                },
+              );
             },
           ),
         ),

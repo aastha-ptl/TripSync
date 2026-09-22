@@ -9,6 +9,9 @@ import '../../../core/routes/app_routes.dart';
 import '../../expenses/services/trip_expense_service.dart';
 import '../../itinerary/services/itinerary_service.dart';
 import '../../profile/services/user_service.dart';
+import '../../participants/screens/participants_screen.dart';
+import '../../expenses/screens/trip_expense_screen.dart';
+import '../services/trip_service.dart';
 
 class TripOverviewScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
@@ -22,6 +25,7 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
   final TripExpenseService _expenseService = TripExpenseService();
   final ItineraryService _itineraryService = ItineraryService();
   final UserService _userService = UserService();
+  final TripService _tripService = TripService();
 
   bool _isLoading = true;
   String? _currentUserId;
@@ -72,12 +76,26 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
       }
     } catch (_) {}
 
-    // 1. Members count
-    final List members = trip['members'] ?? trip['participants'] ?? [];
-    _totalMembersCount = members.isNotEmpty ? members.length : 1;
+    // 1. Initial members count fallback from tripData
+    int initialCount = int.tryParse('${trip['membersCount']}') ?? 0;
+    if (initialCount <= 0) {
+      final List members = trip['members'] ?? trip['participants'] ?? [];
+      initialCount = members.isNotEmpty ? members.length : 1;
+    }
+    _totalMembersCount = initialCount;
 
     if (tripId.isNotEmpty) {
       try {
+        // Fetch trip participants to accurately count application users and non-app family members
+        final participantsRes = await _tripService.getTripParticipants(tripId).catchError((_) => <String, dynamic>{'success': false});
+        if (participantsRes['success'] == true && participantsRes['data'] is List) {
+          final List<dynamic> rawData = participantsRes['data'];
+          final int count = TripInfoHelper.calculateTotalTripMembers(rawData);
+          if (count > 0) {
+            _totalMembersCount = count;
+          }
+        }
+
         // 2. Expense Summary & All Expenses
         final summaryRes = await _expenseService.getSummary(tripId);
         if (summaryRes['success'] == true && summaryRes['data'] != null) {
@@ -419,11 +437,15 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
                   _buildTripHeaderCard(),
                   const SizedBox(height: 16),
 
-                  // 2. Key Metrics 2x2 Grid
+                  // 2. Trip Description Card
+                  _buildTripDescriptionCard(),
+                  const SizedBox(height: 16),
+
+                  // 3. Key Metrics 2x2 Grid
                   _buildKeyMetricsGrid(),
                   const SizedBox(height: 20),
 
-                  // 3. Itinerary Progress Card
+                  // 4. Itinerary Progress Card
                   _buildSectionHeader(
                     title: 'Itinerary',
                     actionLabel: 'View Itinerary >',
@@ -438,13 +460,13 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
                   _buildItineraryProgressCard(),
                   const SizedBox(height: 20),
 
-                  // 4. Expense Overview (Donut Chart & Legend)
+                  // 5. Expense Overview (Donut Chart & Legend)
                   _buildSectionHeader(title: 'Expense Overview'),
                   const SizedBox(height: 8),
                   _buildExpenseOverviewCard(),
                   const SizedBox(height: 20),
 
-                  // 5. Settlement Overview
+                  // 6. Settlement Overview
                   _buildSectionHeader(
                     title: 'Settlement Overview',
                     actionLabel: 'View Expense Details >',
@@ -454,16 +476,6 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
                   ),
                   const SizedBox(height: 8),
                   _buildSettlementOverviewCard(),
-                  const SizedBox(height: 20),
-
-                  // 6. Trip Activity Feed
-                  _buildSectionHeader(
-                    title: 'Trip Activity',
-                    actionLabel: 'View All >',
-                    onTap: () {},
-                  ),
-                  const SizedBox(height: 8),
-                  _buildTripActivityCard(),
                   const SizedBox(height: 16),
                 ],
               ),
@@ -604,6 +616,71 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
     );
   }
 
+  Widget _buildTripDescriptionCard() {
+    final trip = widget.tripData ?? {};
+    final String desc = (trip['description'] ?? trip['jobDescription'] ?? '').toString().trim();
+    final String displayDesc = desc.isNotEmpty
+        ? desc
+        : 'Explore breathtaking destinations, local culture, and memorable moments planned for this trip.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.description_outlined,
+                  size: 16,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Trip Description',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            displayDesc,
+            textAlign: TextAlign.justify,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              color: Color(0xFF475569),
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildKeyMetricsGrid() {
     return Column(
       children: [
@@ -615,7 +692,21 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
                 iconBg: const Color(0xFFEFF6FF),
                 iconColor: const Color(0xFF3B82F6),
                 title: 'Trip Members',
-                value: '$_totalMembersCount Members',
+                value: '$_totalMembersCount Member${_totalMembersCount == 1 ? '' : 's'}',
+                onTap: () {
+                  final trip = widget.tripData;
+                  if (trip != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ParticipantsScreen(
+                          tripData: trip,
+                          onBack: () => Navigator.pop(context),
+                        ),
+                      ),
+                    );
+                  }
+                },
               ),
             ),
             const SizedBox(width: 12),
@@ -626,6 +717,20 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
                 iconColor: const Color(0xFFEC4899),
                 title: 'Total Expense',
                 value: _formatCurrency(_totalExpense),
+                onTap: () {
+                  final trip = widget.tripData;
+                  if (trip != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TripExpenseScreen(
+                          tripData: trip,
+                          onBack: () => Navigator.pop(context),
+                        ),
+                      ),
+                    );
+                  }
+                },
               ),
             ),
           ],
@@ -640,6 +745,20 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
                 iconColor: const Color(0xFF8B5CF6),
                 title: 'My Spending',
                 value: _formatCurrency(_mySpending),
+                onTap: () {
+                  final trip = widget.tripData;
+                  if (trip != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TripExpenseScreen(
+                          tripData: trip,
+                          onBack: () => Navigator.pop(context),
+                        ),
+                      ),
+                    );
+                  }
+                },
               ),
             ),
             const SizedBox(width: 12),
@@ -658,8 +777,9 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
     required Color iconColor,
     required String title,
     required String value,
+    VoidCallback? onTap,
   }) {
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -706,6 +826,15 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
         ],
       ),
     );
+
+    if (onTap != null) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: card,
+      );
+    }
+    return card;
   }
 
   Widget _buildSettlementMetricCard() {
@@ -1096,81 +1225,6 @@ class _TripOverviewScreenState extends State<TripOverviewScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTripActivityCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: List.generate(_activities.length, (index) {
-          final item = _activities[index];
-          final isLast = index == _activities.length - 1;
-
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: item['bgColor'] as Color,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(item['icon'] as IconData, color: item['iconColor'] as Color, size: 18),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item['title'],
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            item['subtitle'],
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Text(
-                      item['time'],
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF94A3B8),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (!isLast) const Divider(height: 1, color: Color(0xFFF1F5F9)),
-            ],
-          );
-        }),
       ),
     );
   }

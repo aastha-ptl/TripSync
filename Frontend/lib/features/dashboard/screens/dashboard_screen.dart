@@ -200,7 +200,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
         break;
       case 3:
-        body = const ExpenseScreen();
+        body = ExpenseScreen(
+          onProfileTap: () {
+            setState(() {
+              _currentIndex = 4;
+            });
+          },
+        );
         break;
       case 4:
         body = const ProfileScreen();

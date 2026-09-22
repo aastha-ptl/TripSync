@@ -64,4 +64,33 @@ class TripInfoHelper {
       return defaultText ?? 'Unknown Dates';
     }
   }
+
+  /// Calculates total trip members including application users and non-application user family members
+  static int calculateTotalTripMembers(List<dynamic> rawParticipants) {
+    int total = 0;
+    for (var p in rawParticipants) {
+      if (p is! Map) continue;
+      final role = p['role']?.toString().toLowerCase() ?? '';
+      final type = p['type']?.toString().toLowerCase() ?? '';
+      final group = p['group']?.toString().toLowerCase() ?? '';
+      final fm = p['familyMembers'] as List<dynamic>? ?? [];
+
+      final hasFamily = fm.isNotEmpty;
+      final isFamily = hasFamily &&
+          (type == 'family' ||
+              group.contains('family') ||
+              role == 'familyleader' ||
+              role == 'family_leader' ||
+              role == 'tripleader' ||
+              role == 'trip_leader');
+
+      if (isFamily) {
+        total += 1 + fm.length;
+      } else {
+        total += 1;
+      }
+    }
+    return total;
+  }
 }
+

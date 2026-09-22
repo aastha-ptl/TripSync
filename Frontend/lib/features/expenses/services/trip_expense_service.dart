@@ -14,6 +14,45 @@ class TripExpenseService {
     };
   }
 
+  // 0. Global user-level expense overview across all trips
+  Future<Map<String, dynamic>> getUserExpenseOverview({
+    String? tripId,
+    String? category,
+    String? timePeriod,
+    String? startDate,
+    String? endDate,
+  }) async {
+    try {
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final headers = await _getHeaders();
+
+      final queryParams = <String, String>{};
+      if (tripId != null && tripId.isNotEmpty && tripId != 'All Trips') {
+        queryParams['tripId'] = tripId;
+      }
+      if (category != null && category.isNotEmpty && category != 'All Categories') {
+        queryParams['category'] = category;
+      }
+      if (timePeriod != null && timePeriod.isNotEmpty) {
+        queryParams['timePeriod'] = timePeriod;
+      }
+      if (startDate != null && startDate.isNotEmpty) {
+        queryParams['startDate'] = startDate;
+      }
+      if (endDate != null && endDate.isNotEmpty) {
+        queryParams['endDate'] = endDate;
+      }
+
+      final uri = Uri.parse('$baseUrl/expenses/user-overview').replace(
+        queryParameters: queryParams.isEmpty ? null : queryParams,
+      );
+      final response = await http.get(uri, headers: headers);
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
   // 1. Get eligible members (including non-app family members)
   Future<Map<String, dynamic>> getMembers(String tripId) async {
     try {

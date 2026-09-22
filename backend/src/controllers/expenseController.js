@@ -1007,7 +1007,7 @@ export const settleParticipant = async (req, res) => {
 };
 
 // Helper: Compute pairwise netted balances (+/-) between current user/guest and all other trip members
-const computeTripBalances = async (tripId, currentEntityId, isGuest = false, requestingUserId = null) => {
+export const computeTripBalances = async (tripId, currentEntityId, isGuest = false, requestingUserId = null) => {
   const families = await Family.find({ tripId })
     .populate("familyLeaderId", "firstName lastName profilePhoto")
     .lean();
