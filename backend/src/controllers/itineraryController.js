@@ -55,6 +55,31 @@ export const addActivity = async (req, res) => {
       }
     }
 
+    // Check for conflicting activity at the same time on the same day
+    if (startTime) {
+      const startRange = new Date(startTime.getTime());
+      const endRange = new Date(startTime.getTime() + 59999);
+      const conflictingActivity = await Activity.findOne({
+        tripId,
+        itineraryDayId: itineraryDay._id,
+        startTime: { $gte: startRange, $lte: endRange },
+      });
+
+      if (conflictingActivity) {
+        return res.status(409).json({
+          success: false,
+          conflict: true,
+          message: `An event "${conflictingActivity.title}" is already scheduled at ${time}.`,
+          conflictingActivity: {
+            _id: conflictingActivity._id,
+            title: conflictingActivity.title,
+            time: time,
+            location: conflictingActivity.location?.name || "",
+          },
+        });
+      }
+    }
+
     // Create the Activity
     const activity = new Activity({
       tripId,
@@ -168,6 +193,33 @@ export const updateActivity = async (req, res) => {
         
         startTime = new Date(targetDate);
         startTime.setHours(hours, minutes, 0, 0);
+      }
+    }
+
+    // Check for conflicting activity at the same time on the same day
+    const effectiveStartTime = startTime || activity.startTime;
+    if (effectiveStartTime) {
+      const startRange = new Date(effectiveStartTime.getTime());
+      const endRange = new Date(effectiveStartTime.getTime() + 59999);
+      const conflictingActivity = await Activity.findOne({
+        _id: { $ne: activityId },
+        tripId,
+        itineraryDayId: itineraryDay._id,
+        startTime: { $gte: startRange, $lte: endRange },
+      });
+
+      if (conflictingActivity) {
+        return res.status(409).json({
+          success: false,
+          conflict: true,
+          message: `An event "${conflictingActivity.title}" is already scheduled at ${time || "this time"}.`,
+          conflictingActivity: {
+            _id: conflictingActivity._id,
+            title: conflictingActivity.title,
+            time: time || "",
+            location: conflictingActivity.location?.name || "",
+          },
+        });
       }
     }
 

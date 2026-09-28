@@ -61,6 +61,10 @@ class AppRouter {
         return _slideRoute(AddEventScreen(
           tripData: args?['tripData'],
           existingActivity: args?['existingActivity'],
+          existingActivities: args?['existingActivities'] != null
+              ? List<Map<String, dynamic>>.from(args!['existingActivities'])
+              : null,
+          initialDate: args?['initialDate'] as DateTime?,
         ));
       case AppRoutes.gallery:
         return _slideRoute(const GalleryScreen());

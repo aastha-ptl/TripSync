@@ -137,12 +137,18 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   }
 
   void _editActivity(Map<String, dynamic> activity) {
+    final List<Map<String, dynamic>> allActs = [];
+    _activities.forEach((key, list) {
+      allActs.addAll(list);
+    });
+
     Navigator.pushNamed(
       context,
       AppRoutes.addEvent,
       arguments: {
         'tripData': widget.tripData,
         'existingActivity': activity,
+        'existingActivities': allActs,
       },
     ).then((_) {
       setState(() => _isLoading = true);
@@ -658,7 +664,25 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   Widget _buildFAB() {
     return FloatingActionButton.extended(
       onPressed: () {
-        Navigator.pushNamed(context, AppRoutes.addEvent, arguments: {'tripData': widget.tripData}).then((_) {
+        final List<Map<String, dynamic>> allActs = [];
+        _activities.forEach((key, list) {
+          allActs.addAll(list);
+        });
+
+        DateTime? initialDate;
+        if (_selectedDayIndex >= 0 && _selectedDayIndex < _days.length) {
+          initialDate = _days[_selectedDayIndex]['rawDate'] as DateTime?;
+        }
+
+        Navigator.pushNamed(
+          context,
+          AppRoutes.addEvent,
+          arguments: {
+            'tripData': widget.tripData,
+            'existingActivities': allActs,
+            'initialDate': initialDate,
+          },
+        ).then((_) {
           // Refresh itinerary when returning from add event screen
           setState(() {
             _isLoading = true;

@@ -802,7 +802,18 @@ String _getTripDuration() {
               ),
             ),
             GestureDetector(
-              onTap: () {},
+              onTap: () {
+                Navigator.pushNamed(
+                  context,
+                  AppRoutes.itinerary,
+                  arguments: {
+                    'tripData': widget.tripData,
+                    'isSoloTraveler': false,
+                  },
+                ).then((_) {
+                  _fetchUpcomingActivities();
+                });
+              },
               child: Row(
                 children: const [
                   Text(
@@ -854,15 +865,29 @@ String _getTripDuration() {
             else if (act['type'] == 'food') dotColor = const Color(0xFFF59E0B);
             else if (act['type'] == 'lodging') dotColor = const Color(0xFF9333EA);
 
-            return _buildTimelineItem(
-              dotColor: dotColor,
-              month: month,
-              day: day,
-              title: act['title'] ?? 'Activity',
-              location: act['location']?['name'] ?? '',
-              time: time,
-              timeColor: dotColor,
-              isLast: isLast,
+            return GestureDetector(
+              onTap: () {
+                Navigator.pushNamed(
+                  context,
+                  AppRoutes.itinerary,
+                  arguments: {
+                    'tripData': widget.tripData,
+                    'isSoloTraveler': false,
+                  },
+                ).then((_) {
+                  _fetchUpcomingActivities();
+                });
+              },
+              child: _buildTimelineItem(
+                dotColor: dotColor,
+                month: month,
+                day: day,
+                title: act['title'] ?? 'Activity',
+                location: act['location']?['name'] ?? '',
+                time: time,
+                timeColor: dotColor,
+                isLast: isLast,
+              ),
             );
           }),
       ],

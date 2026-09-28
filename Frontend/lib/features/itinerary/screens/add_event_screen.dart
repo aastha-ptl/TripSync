@@ -7,8 +7,16 @@ import '../services/itinerary_service.dart';
 class AddEventScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
   final Map<String, dynamic>? existingActivity;
+  final List<Map<String, dynamic>>? existingActivities;
+  final DateTime? initialDate;
 
-  const AddEventScreen({super.key, this.tripData, this.existingActivity});
+  const AddEventScreen({
+    super.key,
+    this.tripData,
+    this.existingActivity,
+    this.existingActivities,
+    this.initialDate,
+  });
 
   @override
   State<AddEventScreen> createState() => _AddEventScreenState();
@@ -32,6 +40,7 @@ class _AddEventScreenState extends State<AddEventScreen> {
   DateTime? _tripEndDate;
   List<Map<String, dynamic>> _tripDays = [];
   int? _selectedDayNumber;
+  List<Map<String, dynamic>> _activitiesList = [];
 
   final List<Map<String, dynamic>> _categories = [
     {'id': 'sightseeing', 'label': 'Sightseeing', 'icon': Icons.image_search_outlined, 'color': Color(0xFF0EA5E9)},
@@ -44,9 +53,16 @@ class _AddEventScreenState extends State<AddEventScreen> {
   void initState() {
     super.initState();
     _initTripDatesAndFields();
+    if (widget.tripData?['_id'] != null) {
+      _fetchExistingActivities(widget.tripData!['_id'].toString());
+    }
   }
 
   void _initTripDatesAndFields() {
+    if (widget.existingActivities != null) {
+      _activitiesList = List<Map<String, dynamic>>.from(widget.existingActivities!);
+    }
+
     if (widget.tripData != null &&
         widget.tripData!['startDate'] != null &&
         widget.tripData!['endDate'] != null) {
@@ -81,6 +97,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _titleController.text = activity['title'] ?? '';
       _locationController.text = activity['location'] ?? '';
       _timeController.text = activity['time'] ?? '';
+      if (_timeController.text.isNotEmpty) {
+        _selectedTime = _parseTimeOfDay(_timeController.text);
+      }
       final rawCost = activity['estimatedCost'] ?? activity['cost'];
       if (rawCost != null) {
         String costStr = rawCost.toString().replaceAll('₹', '').replaceAll('/person', '').trim();
@@ -102,8 +121,11 @@ class _AddEventScreenState extends State<AddEventScreen> {
       
       _selectedCategory = activity['type'] ?? 'sightseeing';
     } else {
-      // Default to trip start date or today if within trip range
-      if (_tripStartDate != null) {
+      if (widget.initialDate != null) {
+        _selectedDate = DateTime(widget.initialDate!.year, widget.initialDate!.month, widget.initialDate!.day);
+        _dateController.text = "${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}";
+        _syncDayFromDate(_selectedDate!);
+      } else if (_tripStartDate != null) {
         final now = DateTime.now();
         final today = DateTime(now.year, now.month, now.day);
         if (!today.isBefore(_tripStartDate!) && !today.isAfter(_tripEndDate!)) {
@@ -115,6 +137,285 @@ class _AddEventScreenState extends State<AddEventScreen> {
         _syncDayFromDate(_selectedDate!);
       }
     }
+  }
+
+  Future<void> _fetchExistingActivities(String tripId) async {
+    try {
+      final response = await _itineraryService.getItinerary(tripId);
+      if (response['success'] == true && response['data'] != null) {
+        final List<dynamic> daysData = response['data'];
+        final List<Map<String, dynamic>> allActs = [];
+        for (var dayData in daysData) {
+          final DateTime? dayDate = dayData['date'] != null ? DateTime.tryParse(dayData['date'])?.toLocal() : null;
+          final List<dynamic> acts = dayData['activities'] ?? [];
+          for (var act in acts) {
+            String timeStr = '';
+            DateTime? parsedStartTime;
+            if (act['startTime'] != null) {
+              parsedStartTime = DateTime.tryParse(act['startTime'])?.toLocal();
+              if (parsedStartTime != null) {
+                timeStr = DateFormat('hh:mm a').format(parsedStartTime);
+              }
+            }
+            allActs.add({
+              '_id': act['_id']?.toString(),
+              'title': act['title'] ?? '',
+              'rawDate': dayDate != null
+                  ? DateTime(dayDate.year, dayDate.month, dayDate.day)
+                  : (parsedStartTime != null
+                      ? DateTime(parsedStartTime.year, parsedStartTime.month, parsedStartTime.day)
+                      : null),
+              'time': timeStr,
+              'startTime': parsedStartTime,
+              'location': act['location']?['name'] ?? '',
+            });
+          }
+        }
+        if (mounted) {
+          setState(() {
+            _activitiesList = allActs;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching itinerary for conflict check: $e');
+    }
+  }
+
+  TimeOfDay? _parseTimeOfDay(String timeStr) {
+    final trimmed = timeStr.trim();
+    if (trimmed.isEmpty) return null;
+    try {
+      final format = DateFormat.jm();
+      final dt = format.parse(trimmed);
+      return TimeOfDay(hour: dt.hour, minute: dt.minute);
+    } catch (_) {
+      try {
+        final parts = trimmed.split(':');
+        if (parts.length >= 2) {
+          int hour = int.parse(parts[0].trim());
+          final minPart = parts[1].trim().split(' ');
+          int minute = int.parse(minPart[0].trim());
+          if (minPart.length > 1) {
+            final period = minPart[1].toUpperCase();
+            if (period == 'PM' && hour < 12) hour += 12;
+            if (period == 'AM' && hour == 12) hour = 0;
+          }
+          return TimeOfDay(hour: hour, minute: minute);
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _findConflictingActivity(DateTime date, TimeOfDay time) {
+    final targetDate = DateTime(date.year, date.month, date.day);
+    final targetHour = time.hour;
+    final targetMinute = time.minute;
+    final currentActivityId = (widget.existingActivity?['_id'] ?? widget.existingActivity?['id'])?.toString();
+
+    for (final act in _activitiesList) {
+      final actId = (act['_id'] ?? act['id'])?.toString();
+      if (currentActivityId != null && actId != null && actId == currentActivityId) {
+        continue;
+      }
+
+      DateTime? actDate;
+      if (act['rawDate'] is DateTime) {
+        actDate = act['rawDate'] as DateTime;
+      } else if (act['date'] != null) {
+        actDate = DateTime.tryParse(act['date'].toString())?.toLocal();
+      } else if (act['startTime'] != null) {
+        if (act['startTime'] is DateTime) {
+          actDate = act['startTime'] as DateTime;
+        } else {
+          actDate = DateTime.tryParse(act['startTime'].toString())?.toLocal();
+        }
+      }
+
+      if (actDate == null) continue;
+      final normActDate = DateTime(actDate.year, actDate.month, actDate.day);
+      if (!normActDate.isAtSameMomentAs(targetDate)) {
+        continue;
+      }
+
+      TimeOfDay? actTime;
+      if (act['startTime'] is DateTime) {
+        final st = act['startTime'] as DateTime;
+        actTime = TimeOfDay(hour: st.hour, minute: st.minute);
+      } else if (act['time'] != null && act['time'].toString().isNotEmpty) {
+        actTime = _parseTimeOfDay(act['time'].toString());
+      } else if (act['startTime'] != null) {
+        final st = DateTime.tryParse(act['startTime'].toString())?.toLocal();
+        if (st != null) {
+          actTime = TimeOfDay(hour: st.hour, minute: st.minute);
+        }
+      }
+
+      if (actTime == null) continue;
+
+      if (actTime.hour == targetHour && actTime.minute == targetMinute) {
+        return act;
+      }
+    }
+    return null;
+  }
+
+  void _showTimeConflictDialog(Map<String, dynamic> conflict, String timeStr) {
+    final conflictingTitle = (conflict['title'] != null && conflict['title'].toString().trim().isNotEmpty)
+        ? conflict['title'].toString()
+        : 'Another Event';
+    final location = conflict['location']?.toString();
+    final dateStr = _selectedDate != null ? DateFormat('EEEE, MMM d').format(_selectedDate!) : 'this day';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFEE2E2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.access_time_filled_rounded,
+                color: AppColors.error,
+                size: 34,
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Time Slot Conflict',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'An event is already scheduled at $timeStr on $dateStr.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.event_outlined, color: AppColors.primary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          conflictingTitle,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: AppColors.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(Icons.access_time, size: 12, color: AppColors.textLight),
+                            const SizedBox(width: 4),
+                            Text(
+                              timeStr,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.error,
+                              ),
+                            ),
+                            if (location != null && location.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              const Text('•', style: TextStyle(color: AppColors.textLight, fontSize: 12)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  location,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Please choose a different time to avoid overlapping events.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textLight,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Change Time',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _syncDayFromDate(DateTime date) {
@@ -135,9 +436,19 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _selectedDayNumber = dayNumber;
       _selectedDate = newDate;
       _dateController.text = "${newDate.year}-${newDate.month.toString().padLeft(2, '0')}-${newDate.day.toString().padLeft(2, '0')}";
-      if (_selectedTime != null && _isTimeInvalid(newDate, _selectedTime!)) {
-        _selectedTime = null;
-        _timeController.clear();
+      if (_selectedTime != null) {
+        if (_isTimeInvalid(newDate, _selectedTime!)) {
+          _selectedTime = null;
+          _timeController.clear();
+        } else {
+          final conflict = _findConflictingActivity(newDate, _selectedTime!);
+          if (conflict != null) {
+            final timeStr = _timeController.text;
+            _selectedTime = null;
+            _timeController.clear();
+            _showTimeConflictDialog(conflict, timeStr);
+          }
+        }
       }
     });
   }
@@ -147,9 +458,19 @@ class _AddEventScreenState extends State<AddEventScreen> {
       _selectedDate = picked;
       _dateController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
       _syncDayFromDate(picked);
-      if (_selectedTime != null && _isTimeInvalid(picked, _selectedTime!)) {
-        _selectedTime = null;
-        _timeController.clear();
+      if (_selectedTime != null) {
+        if (_isTimeInvalid(picked, _selectedTime!)) {
+          _selectedTime = null;
+          _timeController.clear();
+        } else {
+          final conflict = _findConflictingActivity(picked, _selectedTime!);
+          if (conflict != null) {
+            final timeStr = _timeController.text;
+            _selectedTime = null;
+            _timeController.clear();
+            _showTimeConflictDialog(conflict, timeStr);
+          }
+        }
       }
     });
   }
@@ -176,6 +497,15 @@ class _AddEventScreenState extends State<AddEventScreen> {
           const SnackBar(content: Text('Error: No trip data available')),
         );
         return;
+      }
+
+      // Check conflict before sending
+      if (_selectedDate != null && _selectedTime != null) {
+        final conflict = _findConflictingActivity(_selectedDate!, _selectedTime!);
+        if (conflict != null) {
+          _showTimeConflictDialog(conflict, _timeController.text);
+          return;
+        }
       }
 
       setState(() {
@@ -235,12 +565,21 @@ class _AddEventScreenState extends State<AddEventScreen> {
         Navigator.pop(context, true);
       } else {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(response['message'] ?? 'Failed to ${isEdit ? 'update' : 'add'} event'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (response['conflict'] == true ||
+            (response['message'] != null &&
+                response['message'].toString().toLowerCase().contains('already scheduled'))) {
+          _showTimeConflictDialog(
+            response['conflictingActivity'] ?? {'title': 'Existing Event'},
+            timeText,
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response['message'] ?? 'Failed to ${isEdit ? 'update' : 'add'} event'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -624,9 +963,22 @@ class _AddEventScreenState extends State<AddEventScreen> {
               }
               return;
             }
+
+            final now = DateTime.now();
+            final dt = DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
+            final formattedTime = DateFormat('hh:mm a').format(dt);
+
+            final conflict = _findConflictingActivity(_selectedDate!, picked);
+            if (conflict != null) {
+              if (mounted) {
+                _showTimeConflictDialog(conflict, formattedTime);
+              }
+              return;
+            }
+
             setState(() {
               _selectedTime = picked;
-              _timeController.text = picked.format(context);
+              _timeController.text = formattedTime;
             });
           }
         },
