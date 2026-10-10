@@ -48,6 +48,7 @@ dependencies:
   url_launcher: ^6.3.2
   file_picker: ^12.2.0
   font_awesome_flutter: ^11.0.0
+  socket_io_client: ^3.1.6
 
 dev_dependencies:
   flutter_test:

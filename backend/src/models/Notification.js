@@ -25,7 +25,9 @@ const notificationSchema = new mongoose.Schema(
         "tripUpdate",
         "itineraryUpdate",
         "newMessage",
+        "announcement",
         "pollCreated",
+
         "pollResult",
         "documentShared",
         "expenseAdded",

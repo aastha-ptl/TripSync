@@ -1,155 +1,219 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/constants/api_endpoints.dart';
 import '../models/message.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
+import '../../profile/services/user_service.dart';
+import '../services/chat_service.dart';
+import '../services/socket_service.dart';
+
+
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final bool isTripLeader;
+  final String tripName;
+  final String? tripId;
+  final Map<String, dynamic>? tripData;
+  final int initialTabIndex;
+
+  const ChatScreen({
+    super.key,
+    this.isTripLeader = false,
+    this.tripName = 'Trip Chat',
+    this.tripId,
+    this.tripData,
+    this.initialTabIndex = 0,
+  });
+
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  
-  bool _isTyping = false;
-  bool _showSystemTyping = true; // Rahul Sharma is typing...
+// Global in-memory storage for trip-specific announcements & group chat per trip
+final Map<String, List<Message>> _tripAnnouncementsStore = {};
+final Map<String, List<Message>> _tripGroupMessagesStore = {};
 
-  final List<Message> _messages = [
-    Message(
-      id: '1',
-      senderName: 'System',
-      senderAvatar: '',
-      content: 'Rahul Sharma joined the trip.',
-      timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-      isMe: false,
-      type: MessageType.system,
-    ),
-    Message(
-      id: '2',
-      senderName: 'Rahul Sharma',
-      senderAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-      content: 'Hey everyone! Excited for our Paris getaway next week. Did we finalize the hotel?',
-      timestamp: DateTime.now().subtract(const Duration(hours: 4, minutes: 50)),
-      isMe: false,
-    ),
-    Message(
-      id: '3',
-      senderName: 'Sneha Joshi',
-      senderAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-      content: 'Yes! We are staying at Le Bristol Paris. It is very close to the Seine river. 🏨',
-      timestamp: DateTime.now().subtract(const Duration(hours: 4, minutes: 45)),
-      isMe: false,
-    ),
-    Message(
-      id: '4',
-      senderName: 'Rahul Sharma',
-      senderAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-      content: 'Awesome. I just added our first expense of dinner tickets in the app.',
-      timestamp: DateTime.now().subtract(const Duration(hours: 3)),
-      isMe: false,
-    ),
-    Message(
-      id: '5',
-      senderName: 'System',
-      senderAvatar: '',
-      content: 'Rahul Sharma added an expense: Dinner at Le Meurice (- ₹4,850)',
-      timestamp: DateTime.now().subtract(const Duration(hours: 2, minutes: 59)),
-      isMe: false,
-      type: MessageType.system,
-    ),
-    Message(
-      id: '6',
-      senderName: 'Sneha Joshi',
-      senderAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-      content: 'I booked the Seine River Cruise Tickets!',
-      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-      isMe: false,
-    ),
-    Message(
-      id: '7',
-      senderName: 'System',
-      senderAvatar: '',
-      content: 'Sneha Joshi completed a task: Book Seine River Cruise Tickets',
-      timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 58)),
-      isMe: false,
-      type: MessageType.system,
-    ),
-    Message(
-      id: '8',
-      senderName: 'You',
-      senderAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      content: 'Perfect. I will upload some of our planned spots here.',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 40)),
-      isMe: true,
-    ),
-    Message(
-      id: '9',
-      senderName: 'You',
-      senderAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      content: 'Eiffel Tower at Night 🌙',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 38)),
-      isMe: true,
-      type: MessageType.image,
-      attachmentUrl: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&auto=format&fit=crop&q=80',
-    ),
-    Message(
-      id: '10',
-      senderName: 'Sneha Joshi',
-      senderAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-      content: 'Here is where we will meet on May 20th:',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 15)),
-      isMe: false,
-    ),
-    Message(
-      id: '11',
-      senderName: 'Sneha Joshi',
-      senderAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-      content: 'Charles de Gaulle Airport, Terminal 2E',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 14)),
-      isMe: false,
-      type: MessageType.location,
-      latitude: 49.0097,
-      longitude: 2.5479,
-    ),
-  ];
+class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateMixin {
+  final ChatService _chatService = ChatService();
+  final SocketService _socketService = SocketService();
+
+  late TabController _tabController;
+  final TextEditingController _messageController = TextEditingController();
+  final ScrollController _groupScrollController = ScrollController();
+  final ScrollController _announcementScrollController = ScrollController();
+
+  bool _isTyping = false;
+  bool _showSystemTyping = false;
+  bool _isLoadingAnnouncements = false;
+  bool _isSending = false;
+
+  late List<Message> _announcementMessages;
+  late List<Message> _groupMessages;
+  late String _activeTripId;
+  String _currentUserName = 'You (Trip Leader)';
+  String _currentUserAvatar = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
   @override
   void initState() {
     super.initState();
-    // Simulate other users typing effect
-    Timer(const Duration(seconds: 4), () {
-      if (mounted) {
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: (widget.initialTabIndex >= 0 && widget.initialTabIndex < 2)
+          ? widget.initialTabIndex
+          : 0,
+    );
+    _tabController.addListener(() {
+      setState(() {});
+    });
+
+
+    String rawTripId = '';
+    if (widget.tripId != null && widget.tripId!.trim().isNotEmpty) {
+      rawTripId = widget.tripId!.trim();
+    } else if (widget.tripData != null) {
+      rawTripId = (widget.tripData!['_id'] ?? widget.tripData!['id'] ?? '').toString().trim();
+    }
+    if (rawTripId.isEmpty) {
+      rawTripId = widget.tripName.trim().toLowerCase();
+    }
+    _activeTripId = rawTripId;
+
+    _fetchUserProfile();
+
+    // Initialize per-trip announcements store dynamically
+    if (!_tripAnnouncementsStore.containsKey(_activeTripId)) {
+      _tripAnnouncementsStore[_activeTripId] = [];
+    }
+    _announcementMessages = _tripAnnouncementsStore[_activeTripId]!;
+
+    // Initialize per-trip group messages store
+    if (!_tripGroupMessagesStore.containsKey(_activeTripId)) {
+      _tripGroupMessagesStore[_activeTripId] = [];
+    }
+    _groupMessages = _tripGroupMessagesStore[_activeTripId]!;
+
+    _loadAnnouncements();
+    _loadGroupMessages();
+    _initSocketConnection();
+  }
+
+  void _initSocketConnection() {
+    if (_activeTripId.isEmpty) return;
+    _socketService.connect(
+      _activeTripId,
+      onAnnouncement: (Message newMsg) {
+        if (mounted) {
+          final exists = _announcementMessages.any((m) =>
+              m.id == newMsg.id ||
+              (m.content.trim() == newMsg.content.trim() &&
+                  m.senderName == newMsg.senderName &&
+                  m.timestamp.difference(newMsg.timestamp).inSeconds.abs() < 10));
+          if (!exists) {
+            setState(() {
+              _announcementMessages.add(newMsg);
+              _tripAnnouncementsStore[_activeTripId] = _announcementMessages;
+            });
+            _scrollToBottom(_announcementScrollController);
+          }
+        }
+      },
+      onGroupMessage: (Message newMsg) {
+        if (mounted) {
+          final exists = _groupMessages.any((m) =>
+              m.id == newMsg.id ||
+              (m.content.trim() == newMsg.content.trim() &&
+                  m.senderName == newMsg.senderName &&
+                  m.timestamp.difference(newMsg.timestamp).inSeconds.abs() < 10));
+          if (!exists) {
+            setState(() {
+              _groupMessages.add(newMsg);
+              _tripGroupMessagesStore[_activeTripId] = _groupMessages;
+            });
+            _scrollToBottom(_groupScrollController);
+          }
+        }
+      },
+    );
+  }
+
+
+  Future<void> _loadAnnouncements() async {
+    if (_activeTripId.isEmpty) return;
+    setState(() {
+      _isLoadingAnnouncements = true;
+    });
+
+    final res = await _chatService.getAnnouncements(_activeTripId);
+    if (mounted) {
+      setState(() {
+        _isLoadingAnnouncements = false;
+      });
+      if (res['success'] == true && res['data'] != null) {
+        final List<Message> fetched = List<Message>.from(res['data']);
         setState(() {
-          _showSystemTyping = true;
+          _announcementMessages = fetched;
+          _tripAnnouncementsStore[_activeTripId] = fetched;
         });
       }
-    });
-    Timer(const Duration(seconds: 9), () {
-      if (mounted) {
+    }
+  }
+
+  Future<void> _loadGroupMessages() async {
+    if (_activeTripId.isEmpty) return;
+    final res = await _chatService.getGroupMessages(_activeTripId);
+    if (mounted && res['success'] == true && res['data'] != null) {
+      final List<Message> fetched = List<Message>.from(res['data']);
+      setState(() {
+        _groupMessages = fetched;
+        _tripGroupMessagesStore[_activeTripId] = fetched;
+      });
+    }
+  }
+
+  Future<void> _fetchUserProfile() async {
+    try {
+      final userService = UserService();
+      final res = await userService.getProfile();
+      if (res['success'] == true && res['data'] != null && mounted) {
+        final uData = res['data'];
+        final fn = (uData['firstName'] ?? '').toString().trim();
+        final ln = (uData['lastName'] ?? '').toString().trim();
+        String fullName = '$fn $ln'.trim();
+        if (fullName.isEmpty) fullName = (uData['name'] ?? '').toString().trim();
+        if (fullName.isEmpty) fullName = 'Trip Leader';
+
+        final photo = uData['profilePhoto']?.toString();
+
         setState(() {
-          _showSystemTyping = false;
+          _currentUserName = widget.isTripLeader ? '$fullName (Trip Leader)' : fullName;
+          if (photo != null && photo.isNotEmpty) {
+            _currentUserAvatar = photo;
+          }
         });
       }
-    });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _socketService.disconnect();
+    _tabController.dispose();
     _messageController.dispose();
-    _scrollController.dispose();
+    _groupScrollController.dispose();
+    _announcementScrollController.dispose();
     super.dispose();
   }
 
-  void _scrollToBottom() {
+
+  void _scrollToBottom(ScrollController controller) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+      if (controller.hasClients) {
+        controller.animateTo(
+          controller.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -157,58 +221,108 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _isSending) return;
 
-    setState(() {
-      _messages.add(
-        Message(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          senderName: 'You',
-          senderAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          content: text,
-          timestamp: DateTime.now(),
-          isMe: true,
+    final isAnnouncementTab = _tabController.index == 0;
+
+    if (isAnnouncementTab && !widget.isTripLeader) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the Trip Leader can send announcements!'),
+          backgroundColor: AppColors.error,
         ),
       );
-      _messageController.clear();
+      return;
+    }
+
+    _messageController.clear();
+    setState(() {
       _isTyping = false;
+      _isSending = true;
     });
 
-    _scrollToBottom();
-
-    // Auto replies/simulated interactions
-    Timer(const Duration(seconds: 2), () {
+    if (isAnnouncementTab) {
+      final res = await _chatService.postAnnouncement(_activeTripId, text);
       if (mounted) {
-        setState(() {
-          _showSystemTyping = true;
-        });
-      }
-      _scrollToBottom();
-    });
-
-    Timer(const Duration(seconds: 5), () {
-      if (mounted) {
-        setState(() {
-          _showSystemTyping = false;
-          _messages.add(
-            Message(
+        setState(() => _isSending = false);
+        if (res['success'] == true && res['data'] != null) {
+          final newMsg = res['data'] as Message;
+          setState(() {
+            final exists = _announcementMessages.any((m) => m.id == newMsg.id || (m.content.trim() == newMsg.content.trim() && m.senderName == newMsg.senderName));
+            if (!exists) {
+              _announcementMessages.add(newMsg);
+              _tripAnnouncementsStore[_activeTripId] = _announcementMessages;
+            }
+          });
+          _scrollToBottom(_announcementScrollController);
+        } else {
+          // Fallback if backend responds with error or dummy tripId
+          if (res['message'] != null && res['message'].toString().contains('Only the Trip Leader')) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(res['message']),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          } else {
+            final fallbackMsg = Message(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
-              senderName: 'Rahul Sharma',
-              senderAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-              content: 'Got it! I am packing my bags now.',
+              senderName: _currentUserName,
+              senderAvatar: _currentUserAvatar,
+              content: text,
               timestamp: DateTime.now(),
-              isMe: false,
-            ),
-          );
-        });
-        _scrollToBottom();
+              isMe: true,
+              isLeader: widget.isTripLeader,
+              type: MessageType.announcement,
+            );
+            setState(() {
+              _announcementMessages.add(fallbackMsg);
+              _tripAnnouncementsStore[_activeTripId] = _announcementMessages;
+            });
+            _scrollToBottom(_announcementScrollController);
+          }
+        }
       }
-    });
+    } else {
+      final res = await _chatService.sendGroupMessage(_activeTripId, text);
+      if (mounted) {
+        setState(() => _isSending = false);
+        if (res['success'] == true && res['data'] != null) {
+          final newMsg = res['data'] as Message;
+          setState(() {
+            final exists = _groupMessages.any((m) => m.id == newMsg.id || (m.content.trim() == newMsg.content.trim() && m.senderName == newMsg.senderName));
+            if (!exists) {
+              _groupMessages.add(newMsg);
+              _tripGroupMessagesStore[_activeTripId] = _groupMessages;
+            }
+          });
+          _scrollToBottom(_groupScrollController);
+        }
+ else {
+          final fallbackMsg = Message(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            senderName: _currentUserName,
+            senderAvatar: _currentUserAvatar,
+            content: text,
+            timestamp: DateTime.now(),
+            isMe: true,
+            isLeader: widget.isTripLeader,
+            type: MessageType.text,
+          );
+          setState(() {
+            _groupMessages.add(fallbackMsg);
+            _tripGroupMessagesStore[_activeTripId] = _groupMessages;
+          });
+          _scrollToBottom(_groupScrollController);
+        }
+      }
+    }
   }
 
   @override
+
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -224,18 +338,28 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           children: [
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                itemCount: _messages.length,
-                physics: const BouncingScrollPhysics(),
-                itemBuilder: (context, index) {
-                  return _buildMessageItem(_messages[index]);
-                },
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // Tab 1: Announcements (Leader Broadcast Channel)
+                  _buildMessageList(_announcementMessages, _announcementScrollController, isAnnouncement: true),
+                  // Tab 2: Group Chat (Everyone)
+                  _buildMessageList(_groupMessages, _groupScrollController, isAnnouncement: false),
+                ],
               ),
             ),
-            if (_showSystemTyping) _buildTypingIndicator(),
-            _buildMessageInput(),
+            AnimatedBuilder(
+              animation: _tabController,
+              builder: (context, child) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_tabController.index == 1 && _showSystemTyping) _buildTypingIndicator(),
+                    _buildBottomArea(),
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -264,37 +388,37 @@ class _ChatScreenState extends State<ChatScreen> {
       titleSpacing: 0,
       title: Row(
         children: [
-          // Group Avatar
           Container(
-            height: 42,
-            width: 42,
+            height: 40,
+            width: 40,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               color: Colors.white.withOpacity(0.2),
             ),
-            child: const Icon(
-              Icons.groups_outlined,
+            child: Icon(
+              _tabController.index == 0 ? Icons.campaign_rounded : Icons.groups_outlined,
               color: Colors.white,
               size: 22,
             ),
           ),
           const SizedBox(width: 12),
-          // Group Title & Members
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text(
-                'Paris Getaway Chat',
-                style: TextStyle(
+                '${widget.tripName} Chat',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(height: 2),
+              const SizedBox(height: 2),
               Text(
-                'Rahul, Sneha +6 others',
-                style: TextStyle(
+                _tabController.index == 0
+                    ? (widget.isTripLeader ? 'Announcements (Leader Mode)' : 'Announcements (Read Only)')
+                    : 'Group Discussion',
+                style: const TextStyle(
                   color: Colors.white70,
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
@@ -304,19 +428,78 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.info_outline, color: Colors.white, size: 22),
-          onPressed: () {},
-        ),
-        const SizedBox(width: 8),
-      ],
+      bottom: TabBar(
+        controller: _tabController,
+        indicatorColor: Colors.white,
+        indicatorWeight: 3,
+        labelColor: Colors.white,
+        unselectedLabelColor: Colors.white60,
+        labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        tabs: const [
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.campaign_outlined, size: 18),
+                SizedBox(width: 6),
+                Text('Announcements'),
+              ],
+            ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.chat_bubble_outline, size: 16),
+                SizedBox(width: 6),
+                Text('Group Chat'),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildMessageItem(Message message) {
+  Widget _buildMessageList(List<Message> messages, ScrollController controller, {required bool isAnnouncement}) {
+    if (messages.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isAnnouncement ? Icons.campaign_outlined : Icons.chat_bubble_outline,
+              size: 48,
+              color: AppColors.textLight,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              isAnnouncement ? 'No announcements yet' : 'No messages yet in Group Chat',
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: controller,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      itemCount: messages.length,
+      physics: const BouncingScrollPhysics(),
+      itemBuilder: (context, index) {
+        return _buildMessageItem(messages[index], isAnnouncement: isAnnouncement);
+      },
+    );
+  }
+
+  Widget _buildMessageItem(Message message, {required bool isAnnouncement}) {
     if (message.type == MessageType.system) {
       return _buildSystemMessage(message);
+    }
+
+    if (isAnnouncement) {
+      return _buildAnnouncementCard(message);
     }
 
     return Padding(
@@ -326,10 +509,7 @@ class _ChatScreenState extends State<ChatScreen> {
         mainAxisAlignment: message.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           if (!message.isMe) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(message.senderAvatar)),
-            ),
+            _buildUserAvatar(message.senderAvatar, message.senderName, radius: 16),
             const SizedBox(width: 8),
           ],
           Flexible(
@@ -354,11 +534,160 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           if (message.isMe) ...[
             const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(message.senderAvatar)),
-            ),
+            _buildUserAvatar(message.senderAvatar, message.senderName, radius: 16),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUserAvatar(String? photo, String name, {double radius = 16}) {
+    final cleanName = name.trim().isNotEmpty ? name.trim() : 'User';
+    final initial = cleanName[0].toUpperCase();
+
+    String cleanUrl = photo ?? '';
+    if (cleanUrl.isNotEmpty && !cleanUrl.startsWith('http')) {
+      cleanUrl = ApiEndpoints.buildImageUrl(cleanUrl);
+    }
+    final finalUrl = ImageUtils.getOptimizedImageUrl(cleanUrl, fallbackName: cleanName);
+
+    if (cleanUrl.isEmpty && (finalUrl.isEmpty || finalUrl.contains('ui-avatars.com'))) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: AppColors.primary,
+        child: Text(
+          initial,
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: radius * 0.85,
+          ),
+        ),
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFFE2E8F0),
+      child: ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: finalUrl,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          placeholder: (context, url) => Container(
+            color: AppColors.primary,
+            child: Center(
+              child: Text(
+                initial,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: radius * 0.85,
+                ),
+              ),
+            ),
+          ),
+          errorWidget: (context, url, error) => Container(
+            color: AppColors.primary,
+            child: Center(
+              child: Text(
+                initial,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: radius * 0.85,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildAnnouncementCard(Message message) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFFFBEB), // Warm yellow highlight background
+            Colors.white,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFCD34D)), // Amber border
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _buildUserAvatar(message.senderAvatar, message.senderName, radius: 16),
+              const SizedBox(width: 8),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          message.senderName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Color(0xFF92400E),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF3C7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'LEADER',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFD97706),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      _formatTime(message.timestamp),
+                      style: const TextStyle(fontSize: 10, color: AppColors.textLight),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            message.content,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textPrimary,
+              height: 1.4,
+            ),
+          ),
         ],
       ),
     );
@@ -372,132 +701,6 @@ class _ChatScreenState extends State<ChatScreen> {
       bottomRight: Radius.circular(message.isMe ? 4 : 16),
     );
 
-    if (message.type == MessageType.image) {
-      return Container(
-        decoration: BoxDecoration(
-          borderRadius: borderRadius,
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CachedNetworkImage(imageUrl: ImageUtils.getOptimizedImageUrl(message.attachmentUrl ?? ''),
-              width: 220,
-              height: 150,
-              fit: BoxFit.cover,
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Text(
-                message.content,
-                style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 12, bottom: 8),
-              child: Align(
-                alignment: Alignment.bottomRight,
-                child: Text(
-                  _formatTime(message.timestamp),
-                  style: const TextStyle(fontSize: 9, color: AppColors.textLight),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (message.type == MessageType.location) {
-      return Container(
-        width: 220,
-        decoration: BoxDecoration(
-          borderRadius: borderRadius,
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Mock map placeholder
-            Container(
-              height: 100,
-              color: const Color(0xFFE3F2FD),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Positioned.fill(
-                    child: Opacity(
-                      opacity: 0.6,
-                      child: GridPaper(
-                        color: Colors.blue.withOpacity(0.2),
-                        divisions: 1,
-                        subdivisions: 1,
-                      ),
-                    ),
-                  ),
-                  const Icon(
-                    Icons.location_on,
-                    color: AppColors.error,
-                    size: 36,
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Shared Location',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    message.content,
-                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(right: 12, bottom: 8),
-              child: Align(
-                alignment: Alignment.bottomRight,
-                child: Text(
-                  _formatTime(message.timestamp),
-                  style: const TextStyle(fontSize: 9, color: AppColors.textLight),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Text Message
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
@@ -513,9 +716,7 @@ class _ChatScreenState extends State<ChatScreen> {
         border: message.isMe ? null : Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: message.isMe
-                ? AppColors.primary.withOpacity(0.15)
-                : Colors.black.withOpacity(0.03),
+            color: message.isMe ? AppColors.primary.withOpacity(0.15) : Colors.black.withOpacity(0.03),
             blurRadius: 8,
             offset: const Offset(0, 3),
           )
@@ -546,42 +747,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildSystemMessage(Message message) {
-    IconData eventIcon = Icons.info_outline;
-    Color iconColor = AppColors.primary;
-
-    if (message.content.contains('expense')) {
-      eventIcon = Icons.account_balance_wallet_outlined;
-      iconColor = AppColors.error;
-    } else if (message.content.contains('task')) {
-      eventIcon = Icons.check_circle_outline;
-      iconColor = AppColors.secondary;
-    } else if (message.content.contains('joined')) {
-      eventIcon = Icons.person_add_alt_1_outlined;
-      iconColor = const Color(0xFF9333EA);
-    }
-
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16.0),
+      padding: const EdgeInsets.symmetric(vertical: 12.0),
       child: Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppColors.border.withOpacity(0.5)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.01),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(eventIcon, size: 16, color: iconColor),
-              const SizedBox(width: 8),
+              const Icon(Icons.info_outline, size: 14, color: AppColors.primary),
+              const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   message.content,
@@ -603,23 +783,50 @@ class _ChatScreenState extends State<ChatScreen> {
     return Padding(
       padding: const EdgeInsets.only(left: 56.0, bottom: 8.0),
       child: Row(
-        children: [
-          const Text(
-            'Rahul Sharma is typing',
+        children: const [
+          Text(
+            'Someone is typing...',
             style: TextStyle(
               fontSize: 11,
               color: AppColors.textSecondary,
               fontStyle: FontStyle.italic,
             ),
           ),
-          const SizedBox(width: 4),
-          _BouncingDots(),
         ],
       ),
     );
   }
 
-  Widget _buildMessageInput() {
+  Widget _buildBottomArea() {
+    final isAnnouncementTab = _tabController.index == 0;
+    final canSend = !isAnnouncementTab || widget.isTripLeader;
+
+    if (!canSend) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.amber.shade50,
+          border: Border(top: BorderSide(color: Colors.amber.shade200)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.lock_outline, size: 16, color: Color(0xFFD97706)),
+            SizedBox(width: 8),
+            Text(
+              'Only Trip Leaders can post announcements',
+              style: TextStyle(
+                color: Color(0xFFB45309),
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -635,17 +842,6 @@ class _ChatScreenState extends State<ChatScreen> {
       child: SafeArea(
         child: Row(
           children: [
-            // Attachments
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline, color: AppColors.textSecondary, size: 24),
-              onPressed: () {},
-            ),
-            IconButton(
-              icon: const Icon(Icons.camera_alt_outlined, color: AppColors.textSecondary, size: 22),
-              onPressed: () {},
-            ),
-            const SizedBox(width: 4),
-            // Text Field
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -657,11 +853,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   controller: _messageController,
                   maxLines: null,
                   style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
-                  decoration: const InputDecoration(
-                    hintText: 'Type a message...',
-                    hintStyle: TextStyle(color: AppColors.textLight, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: isAnnouncementTab
+                        ? 'Post an announcement as Trip Leader...'
+                        : 'Type a message...',
+                    hintStyle: const TextStyle(color: AppColors.textLight, fontSize: 13),
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   ),
                   onChanged: (text) {
                     setState(() {
@@ -672,7 +870,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            // Send Button
             GestureDetector(
               onTap: _sendMessage,
               child: AnimatedContainer(
@@ -689,15 +886,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       : null,
                   color: _isTyping ? null : AppColors.textLight.withOpacity(0.5),
                   shape: BoxShape.circle,
-                  boxShadow: _isTyping
-                      ? [
-                          BoxShadow(
-                            color: AppColors.primary.withOpacity(0.25),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          )
-                        ]
-                      : null,
                 ),
                 child: const Icon(
                   Icons.send,
@@ -713,57 +901,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _formatTime(DateTime dateTime) {
-    final hour = dateTime.hour.toString().padLeft(2, '0');
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
+    final localTime = dateTime.toLocal();
+    final hour24 = localTime.hour;
+    final hour12 = hour24 == 0 ? 12 : (hour24 > 12 ? hour24 - 12 : hour24);
+    final minute = localTime.minute.toString().padLeft(2, '0');
+    final period = hour24 >= 12 ? 'PM' : 'AM';
+    return '$hour12:$minute $period';
   }
 }
 
-class _BouncingDots extends StatefulWidget {
-  @override
-  State<_BouncingDots> createState() => _BouncingDotsState();
-}
-
-class _BouncingDotsState extends State<_BouncingDots> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(3, (index) {
-            final delay = index * 0.2;
-            final value = (1.0 + (_controller.value - delay)) % 1.0;
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 1.5),
-              height: 4,
-              width: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textSecondary.withOpacity(0.3 + (value * 0.7)),
-                shape: BoxShape.circle,
-              ),
-            );
-          }),
-        );
-      },
-    );
-  }
-}

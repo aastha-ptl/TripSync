@@ -53,4 +53,16 @@ class ApiEndpoints {
 
   // Documents
   static const String documents = '/documents';
+
+  // Chat
+  static String announcements(String tripId) => '/trips/$tripId/chat/announcements';
+  static String groupMessages(String tripId) => '/trips/$tripId/chat/messages';
+
+  // Notifications
+  static const String notifications = '/notifications';
+  static const String unreadCount = '/notifications/unread-count';
+  static const String markAllRead = '/notifications/read-all';
+  static String markRead(String id) => '/notifications/$id/read';
 }
+
+

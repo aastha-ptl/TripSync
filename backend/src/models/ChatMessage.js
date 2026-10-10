@@ -26,7 +26,7 @@ const chatMessageSchema = new mongoose.Schema(
 
     chatType: {
       type: String,
-      enum: ["group", "family"],
+      enum: ["group", "family", "announcement"],
       required: true,
     },
 

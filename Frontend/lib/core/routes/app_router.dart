@@ -49,7 +49,13 @@ class AppRouter {
       case AppRoutes.tripDetails:
         return _slideRoute(const TripDetailsScreen());
       case AppRoutes.chat:
-        return _slideRoute(const ChatScreen());
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slideRoute(ChatScreen(
+          isTripLeader: args?['isTripLeader'] ?? false,
+          tripName: args?['tripName'] ?? 'Trip Chat',
+          tripId: args?['tripId']?.toString(),
+          tripData: args?['tripData'],
+        ));
       case AppRoutes.itinerary:
         final args = settings.arguments as Map<String, dynamic>?;
         return _slideRoute(ItineraryScreen(

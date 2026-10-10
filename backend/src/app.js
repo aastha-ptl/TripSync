@@ -64,7 +64,12 @@ app.use("/api/expenses", userExpenseRoutes);
 app.use("/api/trips/:tripId/photos", photoRoutes);
 app.use("/api/users", userRoutes);
 import documentRoutes from "./routes/documentRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
 app.use("/api/documents", documentRoutes);
+app.use("/api/trips/:tripId/chat", chatRoutes);
+app.use("/api/notifications", notificationRoutes);
+
 
 app.get("/join/:inviteToken", (req, res) => {
   const token = req.params.inviteToken;

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tripsync/core/utils/image_utils.dart';
+import '../../features/notifications/widgets/notification_icon_button.dart';
+
 
 class CustomAppBar extends StatelessWidget {
   final String? title;
@@ -124,32 +126,13 @@ class CustomAppBar extends StatelessWidget {
           // Notifications & Profile
           Row(
             children: [
-              Stack(
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      notificationIcon,
-                      color: AppColors.textPrimary,
-                      size: 28,
-                    ),
-                    onPressed: onNotificationTap ?? () {},
-                  ),
-                  Positioned(
-                    right: 12,
-                    top: 12,
-                    child: Container(
-                      height: 8,
-                      width: 8,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF1E5AE6),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  )
-                ],
+              NotificationIconButton(
+                onTap: onNotificationTap,
+                iconSize: 28,
               ),
               if (extraActions != null) ...extraActions!,
               const SizedBox(width: 8),
+
               GestureDetector(
                 onTap: onProfileTap,
                 child: CircleAvatar(

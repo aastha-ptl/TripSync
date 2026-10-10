@@ -1,6 +1,10 @@
 import ItineraryDay from "../models/ItineraryDay.js";
 import Activity from "../models/Activity.js";
 import Trip from "../models/Trip.js";
+import TripParticipant from "../models/TripParticipant.js";
+import { createAndSendNotification } from "../services/notificationService.js";
+import { emitToTripRoom } from "../socket.js";
+
 
 export const addActivity = async (req, res) => {
   try {
@@ -99,6 +103,39 @@ export const addActivity = async (req, res) => {
 
     await activity.save();
 
+    // Send notifications to trip participants
+    try {
+      const participants = await TripParticipant.find({ tripId, status: "approved" });
+      const targetUserIds = participants
+        .map((p) => p.userId ? p.userId.toString() : null)
+        .filter((id) => id && id !== req.user._id.toString());
+
+      if (trip.createdBy && trip.createdBy.toString() !== req.user._id.toString() && !targetUserIds.includes(trip.createdBy.toString())) {
+        targetUserIds.push(trip.createdBy.toString());
+      }
+
+
+
+      const userName = req.user.firstName ? `${req.user.firstName} ${req.user.lastName || ''}`.trim() : (req.user.name || "A member");
+      await createAndSendNotification({
+        targetUserIds,
+        tripId,
+        type: "itineraryUpdate",
+        title: "New Itinerary Activity",
+        message: `${userName} added "${activity.title}" to the trip itinerary.`,
+        referenceId: activity._id,
+        referenceType: "Activity",
+      });
+
+      emitToTripRoom(tripId, "itinerary_updated", {
+        tripId,
+        activity,
+        itineraryDay,
+      });
+    } catch (notifErr) {
+      console.error("Failed to send itinerary notification:", notifErr);
+    }
+
     res.status(201).json({
       success: true,
       data: {
@@ -112,6 +149,7 @@ export const addActivity = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to add activity" });
   }
 };
+
 
 export const getItinerary = async (req, res) => {
   try {

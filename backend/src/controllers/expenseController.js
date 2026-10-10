@@ -8,6 +8,9 @@ import Family from "../models/Family.js";
 import Trip from "../models/Trip.js";
 import User from "../models/User.js";
 import PDFDocument from "pdfkit";
+import { createAndSendNotification } from "../services/notificationService.js";
+import { emitToTripRoom } from "../socket.js";
+
 
 // Helper: check if user is a member of the trip
 const verifyTripAccess = async (tripId, userId) => {
@@ -430,11 +433,56 @@ export const createExpense = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    try {
+      const associatedUserIds = new Set();
+
+      for (const p of expenseParticipantDocs) {
+        if (p.userId) {
+          associatedUserIds.add(p.userId.toString());
+        } else if (p.guestId) {
+          const family = await Family.findOne({
+            tripId,
+            "members._id": p.guestId,
+          });
+          if (family && family.familyLeaderId) {
+            associatedUserIds.add(family.familyLeaderId.toString());
+          }
+        }
+      }
+
+      // Only notify associated users, excluding the creator who added the split
+      const targetUserIds = Array.from(associatedUserIds).filter(
+        (id) => id !== userId.toString()
+      );
+
+
+
+
+      const payerName = req.user.firstName ? `${req.user.firstName} ${req.user.lastName || ''}`.trim() : (req.user.name || "A member");
+      await createAndSendNotification({
+        targetUserIds,
+        tripId,
+        type: "expenseAdded",
+        title: "New Split Expense",
+        message: `${payerName} added a ${category} expense "${title}" (Rs. ${totalAmount}).`,
+        referenceId: newExpense._id,
+        referenceType: "Expense",
+      });
+
+      emitToTripRoom(tripId, "expense_added", {
+        tripId,
+        expense: newExpense,
+      });
+    } catch (notifErr) {
+      console.error("Error creating expense notification:", notifErr);
+    }
+
     res.status(201).json({
       success: true,
       message: "Expense created successfully",
       data: newExpense,
     });
+
   } catch (error) {
     await session.abortTransaction();
     session.endSession();

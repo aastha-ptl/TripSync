@@ -153,7 +153,7 @@ class TripService {
 
       final baseUrl = await ApiEndpoints.getBaseUrl();
       final url = Uri.parse('${baseUrl}${ApiEndpoints.joinTrip}');
-      final response = await http.post(
+      final response = await http.post(   
         url,
         headers: {
           'Content-Type': 'application/json',

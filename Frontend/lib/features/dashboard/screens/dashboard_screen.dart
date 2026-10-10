@@ -120,6 +120,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'statusColor': statusColor.withOpacity(0.1),
             'textColor': statusColor,
             'imageUrl': imageUrl,
+            'createdBy': trip['createdBy'],
             'role': trip['participantRole'] ?? 'Member',
             'originalRole': trip['participantRole'] ?? 'Member',
             'membersCount': trip['membersCount'] ?? 1,
@@ -131,6 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             upcoming.add({
               'id': trip['_id'],
               '_id': trip['_id'],
+              'createdBy': trip['createdBy'],
               'startDate': trip['startDate'],
               'endDate': trip['endDate'],
               'title': trip['name'] ?? 'Untitled',

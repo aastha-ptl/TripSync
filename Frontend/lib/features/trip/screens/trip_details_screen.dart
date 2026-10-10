@@ -14,6 +14,8 @@ import '../../itinerary/services/itinerary_service.dart';
 import '../../../core/utils/date_formatter.dart';
 import 'photo_gallery_screen.dart';
 import '../services/trip_service.dart';
+import '../../notifications/widgets/notification_icon_button.dart';
+
 
 class TripDetailsScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
@@ -551,6 +553,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         ),
         const SizedBox(width: 12),
         // Right side profile picture
+
         GestureDetector(
           onTap: () {
             Navigator.push(
@@ -583,6 +586,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         ),
       ],
     ),
+
   );
 }
 
@@ -1239,8 +1243,81 @@ String _getTripDuration() {
 
   Widget _buildFloatingChatButton() {
     return GestureDetector(
-      onTap: () {
-        Navigator.pushNamed(context, AppRoutes.chat);
+      onTap: () async {
+        final rawRole = (widget.tripData?['role'] ?? widget.tripData?['participantRole'] ?? widget.tripData?['originalRole'] ?? '').toString();
+        final role = rawRole.toLowerCase();
+        
+        // Check initial role values
+        bool isLeader = widget.tripData?['isTripLeader'] == true ||
+            rawRole == 'tripLeader' ||
+            role == 'tripleader' ||
+            role == 'admin' ||
+            role == 'creator';
+
+        if (!isLeader) {
+          try {
+            final userService = UserService();
+            final profileRes = await userService.getProfile();
+            if (profileRes['success'] == true && profileRes['data'] != null) {
+              final myId = profileRes['data']['_id']?.toString();
+              String? createdBy;
+              final cbObj = widget.tripData?['createdBy'];
+              if (cbObj is Map && cbObj['_id'] != null) {
+                createdBy = cbObj['_id'].toString();
+              } else if (cbObj != null) {
+                createdBy = cbObj.toString();
+              }
+              if (myId != null && createdBy != null && myId == createdBy) {
+                isLeader = true;
+              }
+
+              // Also check trip participants from API
+              if (!isLeader) {
+                final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
+                if (tripId != null && tripId.isNotEmpty) {
+                  final participantsRes = await _tripService.getTripParticipants(tripId);
+                  if (participantsRes['success'] == true && participantsRes['data'] is List) {
+                    for (var p in participantsRes['data']) {
+                      final pUserId = (p['userId'] is Map ? p['userId']['_id'] : p['userId'])?.toString();
+                      if (pUserId == myId && (p['role'] == 'tripLeader' || p['role'] == 'creator' || p['role'] == 'admin')) {
+                        isLeader = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        String tripName = 'Trip Chat';
+        if (widget.tripData != null) {
+          if (widget.tripData!['name'] != null && widget.tripData!['name'].toString().isNotEmpty) {
+            tripName = widget.tripData!['name'].toString();
+          } else if (widget.tripData!['title'] != null && widget.tripData!['title'].toString().isNotEmpty) {
+            tripName = widget.tripData!['title'].toString();
+          } else if (widget.tripData!['destination'] is Map && widget.tripData!['destination']['name'] != null) {
+            tripName = widget.tripData!['destination']['name'].toString();
+          } else if (widget.tripData!['destination'] is String && widget.tripData!['destination'].toString().isNotEmpty) {
+            tripName = widget.tripData!['destination'].toString();
+          }
+        }
+
+        if (!mounted) return;
+
+        final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
+
+        Navigator.pushNamed(
+          context,
+          AppRoutes.chat,
+          arguments: {
+            'isTripLeader': isLeader,
+            'tripName': tripName,
+            'tripId': tripId,
+            'tripData': widget.tripData,
+          },
+        );
       },
       child: Stack(
         clipBehavior: Clip.none,

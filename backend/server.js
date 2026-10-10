@@ -1,13 +1,18 @@
+import http from "http";
 import app from "./src/app.js";
 import { connectDB } from "./src/config/db.js";
 import env from "./src/config/env.js";
+import { initSocket } from "./src/socket.js";
 
 const startServer = async () => {
   try {
     await connectDB();
 
-    const server = app.listen(env.PORT, '0.0.0.0', () => {
-      console.log(`TripSync API server running on port ${env.PORT}`);
+    const server = http.createServer(app);
+    initSocket(server);
+
+    server.listen(env.PORT, "0.0.0.0", () => {
+      console.log(`TripSync API & Socket.IO server running on port ${env.PORT}`);
     });
 
     return server;

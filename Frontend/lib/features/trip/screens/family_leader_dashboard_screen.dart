@@ -14,6 +14,8 @@ import 'package:intl/intl.dart';
 import '../../itinerary/services/itinerary_service.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../services/trip_service.dart';
+import '../../notifications/widgets/notification_icon_button.dart';
+
 
 class FamilyLeaderDashboardScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
@@ -529,6 +531,7 @@ class _FamilyLeaderDashboardScreenState extends State<FamilyLeaderDashboardScree
         ),
         const SizedBox(width: 12),
         // Right side profile picture
+
         GestureDetector(
           onTap: () {
             Navigator.push(
@@ -561,6 +564,7 @@ class _FamilyLeaderDashboardScreenState extends State<FamilyLeaderDashboardScree
         ),
       ],
     ),
+
   );
 }
 
@@ -1218,8 +1222,72 @@ String _getTripDuration() {
 
   Widget _buildFloatingChatButton() {
     return GestureDetector(
-      onTap: () {
-        Navigator.pushNamed(context, AppRoutes.chat);
+      onTap: () async {
+        final rawRole = (widget.tripData?['role'] ?? widget.tripData?['participantRole'] ?? '').toString();
+        final role = rawRole.toLowerCase();
+
+        bool isLeader = widget.tripData?['isTripLeader'] == true ||
+            rawRole == 'tripLeader' ||
+            role == 'tripleader' ||
+            role == 'admin' ||
+            role == 'creator';
+
+        if (!isLeader) {
+          try {
+            final userService = UserService();
+            final profileRes = await userService.getProfile();
+            if (profileRes['success'] == true && profileRes['data'] != null) {
+              final myId = profileRes['data']['_id']?.toString();
+              String? createdBy;
+              final cbObj = widget.tripData?['createdBy'];
+              if (cbObj is Map && cbObj['_id'] != null) {
+                createdBy = cbObj['_id'].toString();
+              } else if (cbObj != null) {
+                createdBy = cbObj.toString();
+              }
+              if (myId != null && createdBy != null && myId == createdBy) {
+                isLeader = true;
+              }
+
+              if (!isLeader) {
+                final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
+                if (tripId != null && tripId.isNotEmpty) {
+                  final tripService = TripService();
+                  final participantsRes = await tripService.getTripParticipants(tripId);
+                  if (participantsRes['success'] == true && participantsRes['data'] is List) {
+                    for (var p in participantsRes['data']) {
+                      final pUserId = (p['userId'] is Map ? p['userId']['_id'] : p['userId'])?.toString();
+                      if (pUserId == myId && (p['role'] == 'tripLeader' || p['role'] == 'creator' || p['role'] == 'admin')) {
+                        isLeader = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        final tripName = widget.tripData?['title'] ??
+            widget.tripData?['destination'] ??
+            widget.tripData?['name'] ??
+            'Trip Chat';
+
+        if (!mounted) return;
+
+        final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
+
+        Navigator.pushNamed(
+          context,
+          AppRoutes.chat,
+          arguments: {
+            'isTripLeader': isLeader,
+            'tripName': tripName,
+            'tripId': tripId,
+            'tripData': widget.tripData,
+          },
+        );
       },
       child: Stack(
         clipBehavior: Clip.none,
