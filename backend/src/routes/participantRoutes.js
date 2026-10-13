@@ -4,6 +4,8 @@ import {
   getTripParticipants,
   getJoinRequests,
   updateJoinRequest,
+  leaveTrip,
+  removeFamilyMember,
 } from "../controllers/participantController.js";
 
 const router = express.Router({ mergeParams: true });
@@ -12,5 +14,7 @@ const router = express.Router({ mergeParams: true });
 router.get("/participants", protect, getTripParticipants);
 router.get("/requests", protect, getJoinRequests);
 router.put("/requests/:requestId", protect, updateJoinRequest);
+router.post("/leave", protect, leaveTrip);
+router.post("/remove-family-member", protect, removeFamilyMember);
 
 export default router;

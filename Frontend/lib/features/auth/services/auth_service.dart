@@ -177,16 +177,47 @@ class AuthService {
     return prefs.getString('access_token');
   }
 
+  Future<String?> getCurrentUserId() async {
+    try {
+      final token = await getAccessToken();
+      if (token == null || token.isEmpty) return null;
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final normalized = base64Url.normalize(parts[1]);
+      final payload = utf8.decode(base64Url.decode(normalized));
+      final data = jsonDecode(payload);
+      return (data['id'] ?? data['_id'] ?? data['userId'])?.toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('access_token');
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
   }
 
   Future<bool> isLoggedIn() async {
     final token = await getAccessToken();
-    return token != null && token.isNotEmpty;
+    if (token == null || token.trim().isEmpty) return false;
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return false;
+      final normalized = base64Url.normalize(parts[1]);
+      final payload = utf8.decode(base64Url.decode(normalized));
+      final data = jsonDecode(payload);
+      final exp = data['exp'];
+      if (exp != null && exp is int) {
+        final expDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+        if (DateTime.now().isAfter(expDate)) {
+          return false;
+        }
+      }
+      return true;
+    } catch (_) {
+      return token.trim().isNotEmpty;
+    }
   }
 
   Future<Map<String, dynamic>> googleLogin() async {

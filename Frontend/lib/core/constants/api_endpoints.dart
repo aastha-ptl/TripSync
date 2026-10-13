@@ -57,12 +57,20 @@ class ApiEndpoints {
   // Chat
   static String announcements(String tripId) => '/trips/$tripId/chat/announcements';
   static String groupMessages(String tripId) => '/trips/$tripId/chat/messages';
+  static String chatUnreadCount(String tripId) => '/trips/$tripId/chat/unread-count';
+  static String chatMarkRead(String tripId) => '/trips/$tripId/chat/mark-read';
 
   // Notifications
   static const String notifications = '/notifications';
   static const String unreadCount = '/notifications/unread-count';
   static const String markAllRead = '/notifications/read-all';
   static String markRead(String id) => '/notifications/$id/read';
+
+  // Polls
+  static String tripPolls(String tripId) => '/trips/$tripId/polls';
+  static String tripPollDetail(String tripId, String pollId) => '/trips/$tripId/polls/$pollId';
+  static String tripPollVote(String tripId, String pollId) => '/trips/$tripId/polls/$pollId/vote';
+  static String tripPollVoters(String tripId, String pollId) => '/trips/$tripId/polls/$pollId/voters';
 }
 
 

@@ -361,15 +361,15 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFEFF6FF),
+                                  color: _actingAsName.contains('(Removed)') ? const Color(0xFFFEE2E2) : const Color(0xFFEFF6FF),
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                                  border: Border.all(color: _actingAsName.contains('(Removed)') ? const Color(0xFFFECACA) : const Color(0xFFBFDBFE)),
                                 ),
                                 child: Text(
                                   _actingAsName,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 10,
-                                    color: Color(0xFF1E5AE6),
+                                    color: _actingAsName.contains('(Removed)') ? const Color(0xFFDC2626) : const Color(0xFF1E5AE6),
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -433,8 +433,10 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                     _actingAsName = 'Myself';
                   } else {
                     _actingAsGuestId = val;
-                    final member = _myFamilyMembers.firstWhere((m) => m['id'] == val);
-                    _actingAsName = member['name'];
+                    final member = _myFamilyMembers.firstWhere((m) => m['id'] == val, orElse: () => {});
+                    final isRemoved = member['isRemoved'] == true || member['status'] == 'removed' || member['status'] == 'left';
+                    final baseName = member['name'] ?? 'Family Member';
+                    _actingAsName = isRemoved ? '$baseName (Removed)' : baseName;
                   }
                   _isLoading = true;
                 });
@@ -445,10 +447,20 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                   value: 'myself',
                   child: Text('Myself', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
                 ),
-                ..._myFamilyMembers.map((m) => PopupMenuItem(
-                      value: m['id'].toString(),
-                      child: Text('${m['name']} (Family)', style: const TextStyle(color: Color(0xFF0F172A))),
-                    )),
+                ..._myFamilyMembers.map((m) {
+                  final isRemoved = m['isRemoved'] == true || m['status'] == 'removed' || m['status'] == 'left';
+                  final displayName = m['name'] ?? 'Family';
+                  return PopupMenuItem(
+                    value: m['id'].toString(),
+                    child: Text(
+                      isRemoved ? '$displayName (Removed)' : '$displayName (Family)',
+                      style: TextStyle(
+                        color: isRemoved ? const Color(0xFFDC2626) : const Color(0xFF0F172A),
+                        fontWeight: isRemoved ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  );
+                }),
               ],
             ),
             const SizedBox(width: 8),
@@ -769,10 +781,11 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
           ),
 
         // Bottom Sticky "Split an expense" Gradient Button
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: 16,
+        if (widget.tripData?['isRemovedFromTrip'] != true && !_actingAsName.contains('(Removed)'))
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 16,
           child: Container(
             height: 52,
             decoration: BoxDecoration(
@@ -1436,13 +1449,38 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        color: Color(0xFF0F172A),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            name,
+                            style: const TextStyle(
+                              color: Color(0xFF0F172A),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (person['isRemoved'] == true) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEE2E2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Removed Traveler',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFDC2626),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     if (isFamilyMember && leaderName != null && leaderName.isNotEmpty) ...[
                       const SizedBox(height: 2),
@@ -1466,14 +1504,14 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
                 ),
               ),
               Text(
-                '₹${amount.toStringAsFixed(2)}',
+                isSettled ? 'Settled' : '₹${amount.toStringAsFixed(2)}',
                 style: TextStyle(
                   color: isSettled
-                      ? const Color(0xFF64748B)
-                      : isOwedByYou
-                      ? const Color(0xFFEF4444) // RED for Owed by you
-                      : const Color(0xFF16A34A), // GREEN for Owed to you
-                  fontSize: 16,
+                      ? const Color(0xFF16A34A) // Green if settled
+                      : (isOwedByYou
+                          ? const Color(0xFFEF4444) // Red: Owed by you (give money to others)
+                          : const Color(0xFF16A34A)), // Green: Owed to you (collect money from others)
+                  fontSize: isSettled ? 14 : 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),

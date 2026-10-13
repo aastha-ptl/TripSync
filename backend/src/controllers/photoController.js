@@ -129,20 +129,32 @@ export const getTripPhotos = async (req, res) => {
   try {
     const { tripId } = req.params;
 
-    // Verify user is a participant
-    const participant = await TripParticipant.findOne({ tripId, userId: req.user._id, status: "approved" });
+    // Verify user is a participant (active or removed)
+    const participant = await TripParticipant.findOne({
+      tripId,
+      userId: req.user._id,
+      status: { $in: ["approved", "removed", "left"] },
+    });
     if (!participant) {
       return res.status(403).json({ success: false, message: "You are not a participant of this trip" });
     }
 
-    const photos = await Photo.find({
+    const isRemoved = participant.status === "removed" || participant.status === "left";
+    const leftAt = isRemoved ? (participant.leftAt || participant.updatedAt) : null;
+
+    const photoQuery = {
       tripId,
       $or: [
         { visibility: "Everyone" },
         { uploaderId: req.user._id },
         { permittedUsers: { $in: [req.user._id] } }
       ]
-    }).populate("uploaderId", "firstName lastName email profilePhoto").sort({ createdAt: -1 });
+    };
+    if (leftAt) {
+      photoQuery.createdAt = { $lte: leftAt };
+    }
+
+    const photos = await Photo.find(photoQuery).populate("uploaderId", "firstName lastName email profilePhoto").sort({ createdAt: -1 });
 
     const nameMap = await buildTripNameMap(tripId);
 

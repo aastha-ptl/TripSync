@@ -90,6 +90,21 @@ class NotificationSocketManager {
         fetchNotifications();
       });
 
+      _socket!.on('expense_updated', (data) {
+        debugPrint('[NotificationSocketManager] Realtime expense_updated received: $data');
+        fetchNotifications();
+      });
+
+      _socket!.on('poll_created', (data) {
+        debugPrint('[NotificationSocketManager] Realtime poll_created received: $data');
+        fetchNotifications();
+      });
+
+      _socket!.on('poll_updated', (data) {
+        debugPrint('[NotificationSocketManager] Realtime poll_updated received: $data');
+        fetchNotifications();
+      });
+
       _socket!.onDisconnect((_) {
         debugPrint('[NotificationSocketManager] Socket disconnected');
       });

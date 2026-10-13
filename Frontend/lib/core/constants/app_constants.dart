@@ -4,15 +4,21 @@ class AppConstants {
   static const String appName = 'TripSync';
   static const String appVersion = '1.0.0';
 
-  static final String? apiProtocol = dotenv.env['API_PROTOCOL'];
+  static String? get apiProtocol => dotenv.env['API_PROTOCOL'];
 
-  static final String? pcIp = dotenv.env['PC_IP'];
+  static String? get pcIp => dotenv.env['PC_IP'];
 
-  static final String? emulatorIp = dotenv.env['EMULATOR_IP'];
+  static String? get emulatorIp => dotenv.env['EMULATOR_IP'];
 
-  static final String? localhostIp = dotenv.env['LOCALHOST_IP'];
+  static String? get localhostIp => dotenv.env['LOCALHOST_IP'];
 
-  static final int? port = int.tryParse(dotenv.env['PORT'] ?? '5000');
+  static int? get port => int.tryParse(dotenv.env['PORT'] ?? '5000');
+
+  static String get geoapifyApiKey =>
+      dotenv.env['GEOAPIFY_API_KEY'] ?? '804f2db71d3c48daa9a5dc662f0ca8c3';
+
+  static String get mapTileUrl =>
+      dotenv.env['MAP_TILE_URL'] ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   static String getInviteLink(String inviteToken) {
     final host = pcIp ?? 'localhost';

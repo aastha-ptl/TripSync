@@ -12,12 +12,12 @@ import { createAndSendNotification } from "../services/notificationService.js";
 import { emitToTripRoom } from "../socket.js";
 
 
-// Helper: check if user is a member of the trip
+// Helper: check if user is a member of the trip (including removed/left for viewing past records)
 const verifyTripAccess = async (tripId, userId) => {
   const participant = await TripParticipant.findOne({
     tripId,
     userId,
-    status: "approved",
+    status: { $in: ["approved", "removed", "left"] },
   });
   return participant;
 };
@@ -85,6 +85,7 @@ export const getTripExpenseMembers = async (req, res) => {
 
       if (fam.members && fam.members.length > 0) {
         for (const fm of fam.members) {
+          if (fm.status === "removed" || fm.status === "left") continue;
           const fmData = {
             fmId: fm._id ? fm._id.toString() : null,
             name: fm.name, // The exact name used when family leader joined/added family
@@ -200,6 +201,8 @@ export const getTripExpenseMembers = async (req, res) => {
           if (fmId && processedGuestIds.has(fmId)) continue;
           if (fmId) processedGuestIds.add(fmId);
 
+          const isRemoved = fm.status === "removed" || fm.status === "left";
+
           const guestMember = {
             id: fmId,
             userId: null,
@@ -215,6 +218,9 @@ export const getTripExpenseMembers = async (req, res) => {
             isFamilyMember: true,
             isCurrentUser: false,
             isMyFamilyMember: isMyFamily,
+            isRemoved: isRemoved,
+            status: fm.status || "approved",
+            leftAt: fm.leftAt || (isRemoved ? fm.updatedAt : null),
             role: "guestFamilyMember",
           };
 
@@ -274,10 +280,10 @@ export const createExpense = async (req, res) => {
     }
 
     const access = await verifyTripAccess(tripId, userId);
-    if (!access) {
+    if (!access || access.status === "removed" || access.status === "left") {
       await session.abortTransaction();
       session.endSession();
-      return res.status(403).json({ success: false, message: "Not a trip participant" });
+      return res.status(403).json({ success: false, message: "You have left or been removed from this trip and cannot create expenses." });
     }
 
     if (!title || !title.trim()) {
@@ -434,40 +440,107 @@ export const createExpense = async (req, res) => {
     session.endSession();
 
     try {
-      const associatedUserIds = new Set();
+      const payerName = req.user.firstName
+        ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
+        : (req.user.name || "A member");
+
+      // Fetch all families in this trip to properly link non-application family members
+      const families = await Family.find({ tripId }).lean();
+
+      // Track notification keys to avoid sending exact duplicates
+      const sentNotifications = new Set();
 
       for (const p of expenseParticipantDocs) {
-        if (p.userId) {
-          associatedUserIds.add(p.userId.toString());
-        } else if (p.guestId) {
-          const family = await Family.findOne({
-            tripId,
-            "members._id": p.guestId,
-          });
-          if (family && family.familyLeaderId) {
-            associatedUserIds.add(family.familyLeaderId.toString());
+        const isGuest = p.participantType === "guest" || !p.userId;
+
+        if (!isGuest && p.userId) {
+          // 1. Direct application user participating in the split
+          const targetUserId = p.userId.toString();
+          // Exclude the creator who added the expense
+          if (targetUserId !== userId.toString()) {
+            const notifKey = `user_${targetUserId}`;
+            if (!sentNotifications.has(notifKey)) {
+              sentNotifications.add(notifKey);
+              await createAndSendNotification({
+                targetUserIds: [targetUserId],
+                tripId,
+                type: "expenseAdded",
+                title: "New Split Expense",
+                message: `${payerName} added a ${category} expense "${title}" (Rs. ${totalAmount}).`,
+                referenceId: newExpense._id,
+                referenceType: "Expense",
+              });
+            }
+          }
+        } else {
+          // 2. Non-application family member participating in the split
+          const guestIdStr = p.guestId ? p.guestId.toString() : null;
+          const guestNameStr = (p.guestName || "").trim().toLowerCase();
+
+          let matchedFamily = null;
+          let matchedMember = null;
+
+          for (const fam of families) {
+            if (fam.members && fam.members.length > 0) {
+              const found = fam.members.find((m) => {
+                if (guestIdStr && m._id && m._id.toString() === guestIdStr) return true;
+                if (guestNameStr && m.name && m.name.trim().toLowerCase() === guestNameStr) return true;
+                return false;
+              });
+              if (found) {
+                matchedFamily = fam;
+                matchedMember = found;
+                break;
+              }
+            }
+          }
+
+          if (matchedFamily && matchedMember) {
+            if (matchedMember.userId) {
+              // This member actually has an app account, send directly to their user account
+              const memberUserId = matchedMember.userId.toString();
+              if (memberUserId !== userId.toString()) {
+                const notifKey = `user_${memberUserId}`;
+                if (!sentNotifications.has(notifKey)) {
+                  sentNotifications.add(notifKey);
+                  await createAndSendNotification({
+                    targetUserIds: [memberUserId],
+                    tripId,
+                    type: "expenseAdded",
+                    title: "New Split Expense",
+                    message: `${payerName} added a ${category} expense "${title}" (Rs. ${totalAmount}).`,
+                    referenceId: newExpense._id,
+                    referenceType: "Expense",
+                  });
+                }
+              }
+            } else {
+              // Non-application family member! Send to Family Leader with person name
+              const leaderId = matchedFamily.familyLeaderId
+                ? matchedFamily.familyLeaderId.toString()
+                : null;
+
+              if (leaderId && leaderId !== userId.toString()) {
+                const personName = matchedMember.name || p.guestName || "Family member";
+                const notifKey = `leader_${leaderId}_guest_${matchedMember._id ? matchedMember._id.toString() : personName}`;
+
+                if (!sentNotifications.has(notifKey)) {
+                  sentNotifications.add(notifKey);
+                  await createAndSendNotification({
+                    targetUserIds: [leaderId],
+                    tripId,
+                    type: "expenseAdded",
+                    title: "New Split Expense",
+                    message: `${payerName} added a ${category} expense "${title}" for ${personName} (Rs. ${totalAmount}).`,
+                    referenceId: newExpense._id,
+                    referenceType: "Expense",
+                  });
+                }
+              }
+            }
           }
         }
       }
-
-      // Only notify associated users, excluding the creator who added the split
-      const targetUserIds = Array.from(associatedUserIds).filter(
-        (id) => id !== userId.toString()
-      );
-
-
-
-
-      const payerName = req.user.firstName ? `${req.user.firstName} ${req.user.lastName || ''}`.trim() : (req.user.name || "A member");
-      await createAndSendNotification({
-        targetUserIds,
-        tripId,
-        type: "expenseAdded",
-        title: "New Split Expense",
-        message: `${payerName} added a ${category} expense "${title}" (Rs. ${totalAmount}).`,
-        referenceId: newExpense._id,
-        referenceType: "Expense",
-      });
 
       emitToTripRoom(tripId, "expense_added", {
         tripId,
@@ -646,6 +719,107 @@ export const updateExpense = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    try {
+      const payerName = req.user.firstName
+        ? `${req.user.firstName} ${req.user.lastName || ''}`.trim()
+        : (req.user.name || "A member");
+
+      const families = await Family.find({ tripId }).lean();
+      const sentNotifications = new Set();
+      const currentParticipants = await ExpenseParticipant.find({ expenseId: expense._id }).lean();
+
+      for (const p of currentParticipants) {
+        const isGuest = p.participantType === "guest" || !p.userId;
+
+        if (!isGuest && p.userId) {
+          const targetUserId = p.userId.toString();
+          if (targetUserId !== userId.toString()) {
+            const notifKey = `user_${targetUserId}`;
+            if (!sentNotifications.has(notifKey)) {
+              sentNotifications.add(notifKey);
+              await createAndSendNotification({
+                targetUserIds: [targetUserId],
+                tripId,
+                type: "expenseAdded",
+                title: "Split Expense Updated",
+                message: `${payerName} updated the ${expense.category || category} expense "${expense.title || title}" (Rs. ${totalAmount}).`,
+                referenceId: expense._id,
+                referenceType: "Expense",
+              });
+            }
+          }
+        } else {
+          const guestIdStr = p.guestId ? p.guestId.toString() : null;
+          const guestNameStr = (p.guestName || "").trim().toLowerCase();
+
+          let matchedFamily = null;
+          let matchedMember = null;
+
+          for (const fam of families) {
+            if (fam.members && fam.members.length > 0) {
+              const found = fam.members.find((m) => {
+                if (guestIdStr && m._id && m._id.toString() === guestIdStr) return true;
+                if (guestNameStr && m.name && m.name.trim().toLowerCase() === guestNameStr) return true;
+                return false;
+              });
+              if (found) {
+                matchedFamily = fam;
+                matchedMember = found;
+                break;
+              }
+            }
+          }
+
+          if (matchedFamily && matchedMember) {
+            if (matchedMember.userId) {
+              const memberUserId = matchedMember.userId.toString();
+              if (memberUserId !== userId.toString()) {
+                const notifKey = `user_${memberUserId}`;
+                if (!sentNotifications.has(notifKey)) {
+                  sentNotifications.add(notifKey);
+                  await createAndSendNotification({
+                    targetUserIds: [memberUserId],
+                    tripId,
+                    type: "expenseAdded",
+                    title: "Split Expense Updated",
+                    message: `${payerName} updated the ${expense.category || category} expense "${expense.title || title}" (Rs. ${totalAmount}).`,
+                    referenceId: expense._id,
+                    referenceType: "Expense",
+                  });
+                }
+              }
+            } else {
+              const leaderId = matchedFamily.familyLeaderId
+                ? matchedFamily.familyLeaderId.toString()
+                : null;
+
+              if (leaderId && leaderId !== userId.toString()) {
+                const personName = matchedMember.name || p.guestName || "Family member";
+                const notifKey = `leader_${leaderId}_guest_${matchedMember._id ? matchedMember._id.toString() : personName}`;
+
+                if (!sentNotifications.has(notifKey)) {
+                  sentNotifications.add(notifKey);
+                  await createAndSendNotification({
+                    targetUserIds: [leaderId],
+                    tripId,
+                    type: "expenseAdded",
+                    title: "Split Expense Updated",
+                    message: `${payerName} updated the ${expense.category || category} expense "${expense.title || title}" for ${personName} (Rs. ${totalAmount}).`,
+                    referenceId: expense._id,
+                    referenceType: "Expense",
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      emitToTripRoom(tripId, "expense_updated", { expenseId: expense._id, tripId });
+    } catch (notifErr) {
+      console.error("Error sending expense update notification:", notifErr);
+    }
+
     res.status(200).json({
       success: true,
       message: "Expense updated successfully",
@@ -736,12 +910,20 @@ export const getTripExpenses = async (req, res) => {
 
         // Find guest member name for robust fallback matching
         let actingGuestName = null;
+        let actingGuestLeftAt = null;
         for (const fam of families) {
           const mem = fam.members?.find((m) => m._id.toString() === actingAsGuestId.toString());
           if (mem) {
             actingGuestName = mem.name;
+            if (mem.status === "removed" || mem.status === "left") {
+              actingGuestLeftAt = mem.leftAt || mem.updatedAt;
+            }
             break;
           }
+        }
+
+        if (actingGuestLeftAt) {
+          expenseQuery.createdAt = { $lte: actingGuestLeftAt };
         }
 
         // Acting as non-app family member:
@@ -785,6 +967,13 @@ export const getTripExpenses = async (req, res) => {
           },
           { _id: { $in: participantExpenseIds } },
         ];
+      }
+    }
+
+    if (access && (access.status === "removed" || access.status === "left")) {
+      const leftAt = access.leftAt || access.updatedAt;
+      if (leftAt) {
+        expenseQuery.createdAt = { $lte: leftAt };
       }
     }
 
@@ -897,11 +1086,32 @@ export const getExpenseDetail = async (req, res) => {
 
     const visibleParticipants = participants;
 
+    const removedTripParticipants = await TripParticipant.find({
+      tripId,
+      status: { $in: ["removed", "left"] },
+    }).select("userId").lean();
+    const removedUserIds = new Set(removedTripParticipants.map((tp) => (tp.userId ? tp.userId.toString() : null)).filter(Boolean));
+
+    const removedGuestIds = new Set();
+    for (const fam of families) {
+      if (fam.members) {
+        for (const fm of fam.members) {
+          if (fm.status === "removed" || fm.status === "left") {
+            if (fm._id) removedGuestIds.add(fm._id.toString());
+            if (fm.userId) removedUserIds.add(fm.userId.toString());
+          }
+        }
+      }
+    }
+
     const formattedParticipants = visibleParticipants.map((p) => {
       const isUser = p.participantType === "user" && p.userId;
       const pEntityId = isUser ? p.userId._id.toString() : p.guestId?.toString();
       const isCurrentUser = pEntityId === currentEntityId;
       const isCreator = pEntityId === payer.entityId;
+
+      const isRemoved = (isUser && removedUserIds.has(p.userId._id.toString())) ||
+        (!isUser && p.guestId && removedGuestIds.has(p.guestId.toString()));
 
       let displayName = p.guestName || "Guest";
       let leaderName = null;
@@ -957,6 +1167,7 @@ export const getExpenseDetail = async (req, res) => {
         settledAt: p.settledAt,
         isCreator,
         isCurrentUser,
+        isRemoved: !!isRemoved,
       };
     });
 
@@ -1074,12 +1285,13 @@ export const computeTripBalances = async (tripId, currentEntityId, isGuest = fal
           isGuest: true,
           isFamilyMember: true,
           leaderName: leaderName,
+          isRemoved: m.status === "removed" || m.status === "left",
         });
       }
     }
   }
 
-  const tripParticipants = await TripParticipant.find({ tripId, status: "approved" })
+  const tripParticipants = await TripParticipant.find({ tripId, status: { $in: ["approved", "removed", "left"] } })
     .populate("userId", "firstName lastName profilePhoto email phone")
     .lean();
 
@@ -1117,11 +1329,24 @@ export const computeTripBalances = async (tripId, currentEntityId, isGuest = fal
         isGuest: false,
         isFamilyMember,
         leaderName,
+        isRemoved: p.status === "removed" || p.status === "left",
       });
     }
   }
 
-  const activeExpenses = await Expense.find({ tripId, status: "active" })
+  let activeExpenseQuery = { tripId, status: "active" };
+  for (const fam of families) {
+    const mem = fam.members?.find((m) => m._id.toString() === currentEntityId);
+    if (mem && (mem.status === "removed" || mem.status === "left")) {
+      const leftAt = mem.leftAt || mem.updatedAt;
+      if (leftAt) {
+        activeExpenseQuery.createdAt = { $lte: leftAt };
+      }
+      break;
+    }
+  }
+
+  const activeExpenses = await Expense.find(activeExpenseQuery)
     .select("_id createdBy paidBy")
     .lean();
 
@@ -1140,7 +1365,7 @@ export const computeTripBalances = async (tripId, currentEntityId, isGuest = fal
 
   const balanceMap = new Map();
 
-  const getOrCreateEntry = (key, name, avatar, isGuestFlag, id, isFamilyMember = false, leaderName = null) => {
+  const getOrCreateEntry = (key, name, avatar, isGuestFlag, id, isFamilyMember = false, leaderName = null, isRemoved = false) => {
     if (!balanceMap.has(key)) {
       balanceMap.set(key, {
         key,
@@ -1150,6 +1375,7 @@ export const computeTripBalances = async (tripId, currentEntityId, isGuest = fal
         avatar: avatar || null,
         isFamilyMember,
         leaderName,
+        isRemoved,
         netBalance: 0,
         unpaidCount: 0,
         settledCount: 0,
@@ -1183,7 +1409,7 @@ export const computeTripBalances = async (tripId, currentEntityId, isGuest = fal
       const isFamilyMember = info?.isFamilyMember ?? isTargetGuest;
       const leaderName = info?.leaderName || null;
 
-      const entry = getOrCreateEntry(key, targetName, targetAvatar, isTargetGuest, pEntityId, isFamilyMember, leaderName);
+      const entry = getOrCreateEntry(key, targetName, targetAvatar, isTargetGuest, pEntityId, isFamilyMember, leaderName, info?.isRemoved || false);
       if (unpaidShare > 0) {
         entry.netBalance += unpaidShare;
         entry.unpaidCount += 1;
@@ -1211,7 +1437,7 @@ export const computeTripBalances = async (tripId, currentEntityId, isGuest = fal
         }
       }
 
-      const entry = getOrCreateEntry(key, payerDisplayName, payerAvatar, isPayerGuest, payer.entityId, isFamilyMember, leaderName);
+      const entry = getOrCreateEntry(key, payerDisplayName, payerAvatar, isPayerGuest, payer.entityId, isFamilyMember, leaderName, info?.isRemoved || false);
       if (unpaidShare > 0) {
         entry.netBalance -= unpaidShare;
         entry.unpaidCount += 1;
@@ -1244,6 +1470,7 @@ export const computeTripBalances = async (tripId, currentEntityId, isGuest = fal
         unpaidCount: entry.unpaidCount,
         isFamilyMember: entry.isFamilyMember,
         leaderName: entry.leaderName,
+        isRemoved: entry.isRemoved || false,
       });
     } else if (roundedNet > 0.01) {
       totalOwedToYou += roundedNet;
@@ -1257,6 +1484,7 @@ export const computeTripBalances = async (tripId, currentEntityId, isGuest = fal
         unpaidCount: entry.unpaidCount,
         isFamilyMember: entry.isFamilyMember,
         leaderName: entry.leaderName,
+        isRemoved: entry.isRemoved || false,
       });
     } else {
       settled.push({
@@ -1269,6 +1497,7 @@ export const computeTripBalances = async (tripId, currentEntityId, isGuest = fal
         expensesCount: entry.settledCount || 0,
         isFamilyMember: entry.isFamilyMember,
         leaderName: entry.leaderName,
+        isRemoved: entry.isRemoved || false,
       });
     }
   });

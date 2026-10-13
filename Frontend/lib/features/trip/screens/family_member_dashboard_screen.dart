@@ -15,6 +15,7 @@ import '../../itinerary/services/itinerary_service.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../services/trip_service.dart';
 import '../../notifications/widgets/notification_icon_button.dart';
+import '../../chat/services/chat_badge_manager.dart';
 
 
 class FamilyMemberDashboardScreen extends StatefulWidget {
@@ -44,6 +45,19 @@ class _FamilyMemberDashboardScreenState extends State<FamilyMemberDashboardScree
   @override
   void initState() {
     super.initState();
+    final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
+    if (tripId != null && tripId.isNotEmpty) {
+      final List<String> alternateTripIds = [];
+      final customId = widget.tripData?['tripId']?.toString();
+      final invCode = widget.tripData?['invitationCode']?.toString();
+      if (customId != null && customId.isNotEmpty && customId != tripId) {
+        alternateTripIds.add(customId);
+      }
+      if (invCode != null && invCode.isNotEmpty && invCode != tripId) {
+        alternateTripIds.add(invCode);
+      }
+      ChatBadgeManager().initForTrip(tripId, alternateTripIds: alternateTripIds);
+    }
     _fetchUpcomingActivities();
     _fetchTripMembersCount();
     _fetchRecentActivities();
@@ -368,6 +382,8 @@ class _FamilyMemberDashboardScreenState extends State<FamilyMemberDashboardScree
             Column(
               children: [
                 _buildTopHeader(),
+                if (widget.tripData?['isRemovedFromTrip'] == true)
+                  _buildArchivedTripBanner(),
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
@@ -588,6 +604,34 @@ class _FamilyMemberDashboardScreenState extends State<FamilyMemberDashboardScree
       ],
     ),
 
+  );
+}
+
+Widget _buildArchivedTripBanner() {
+  final status = widget.tripData?['participantStatus'] == 'left' ? 'left' : 'were removed from';
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    decoration: const BoxDecoration(
+      color: Color(0xFFFEF2F2),
+      border: Border(bottom: BorderSide(color: Color(0xFFFECACA))),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.history_toggle_off_rounded, color: Color(0xFFDC2626), size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Archived Trip: You $status this trip. Viewing historical snapshot.',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFB91C1C),
+            ),
+          ),
+        ),
+      ],
+    ),
   );
 }
 
@@ -1301,7 +1345,7 @@ String _getTripDuration() {
 
         final tripId = (widget.tripData?['_id'] ?? widget.tripData?['id'])?.toString();
 
-        Navigator.pushNamed(
+        await Navigator.pushNamed(
           context,
           AppRoutes.chat,
           arguments: {
@@ -1311,6 +1355,9 @@ String _getTripDuration() {
             'tripData': widget.tripData,
           },
         );
+        if (tripId != null && tripId.isNotEmpty) {
+          ChatBadgeManager().fetchUnreadCount(tripId);
+        }
       },
       child: Stack(
         clipBehavior: Clip.none,
@@ -1339,25 +1386,33 @@ String _getTripDuration() {
             size: 22,
           ),
         ),
-        // Badge
-        Positioned(
-          top: -2,
-          right: -2,
-          child: Container(
-            padding: const EdgeInsets.all(5),
-            decoration: const BoxDecoration(
-              color: Colors.red,
-              shape: BoxShape.circle,
-            ),
-            child: const Text(
-              '3',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
+        // Dynamic Badge
+        ValueListenableBuilder<int>(
+          valueListenable: ChatBadgeManager().unreadCount,
+          builder: (context, count, _) {
+            if (count <= 0) return const SizedBox.shrink();
+            return Positioned(
+              top: -2,
+              right: -2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  count > 99 ? '99+' : '$count',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ],
     ),);
@@ -1388,7 +1443,7 @@ String _getTripDuration() {
           // Middle Floating Map button
           GestureDetector(
             onTap: () {
-              Navigator.pushNamed(context, AppRoutes.map);
+              Navigator.pushNamed(context, AppRoutes.map, arguments: {'tripData': widget.tripData});
             },
             child: Container(
               height: 48,

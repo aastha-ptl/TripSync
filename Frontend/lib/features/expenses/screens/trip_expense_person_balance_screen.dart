@@ -244,6 +244,25 @@ class _TripExpensePersonBalanceScreenState extends State<TripExpensePersonBalanc
                           ),
                         ),
                       ],
+                      if (_targetInfo?['isRemoved'] == true) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFECACA)),
+                          ),
+                          child: const Text(
+                            'Removed Traveler',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFDC2626),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 14),
 
                       // Title: dynamically reflects selection (e.g. "You owe Aarohi Patel" or "Aarohi Patel owes you")

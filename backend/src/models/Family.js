@@ -16,6 +16,23 @@ const familySchema = new mongoose.Schema(
       index: true,
     },
 
+    leaderName: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    leaderAge: {
+      type: Number,
+      default: null,
+    },
+
+    leaderPhone: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
     members: [
       {
         name: { type: String, trim: true, required: true },
@@ -24,6 +41,8 @@ const familySchema = new mongoose.Schema(
         email: { type: String, trim: true, default: null },
         phone: { type: String, trim: true, default: null },
         userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        status: { type: String, enum: ["approved", "removed", "left"], default: "approved" },
+        leftAt: { type: Date, default: null },
       }
     ]
   },

@@ -27,10 +27,11 @@ const notificationSchema = new mongoose.Schema(
         "newMessage",
         "announcement",
         "pollCreated",
-
+        "pollUpdated",
         "pollResult",
         "documentShared",
         "expenseAdded",
+        "expenseUpdated",
         "familyInvitation",
         "locationUpdate",
       ],

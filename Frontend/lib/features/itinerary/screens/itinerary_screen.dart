@@ -96,6 +96,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               'time': timeStr,
               'title': act['title'] ?? '',
               'location': act['location']?['name'] ?? '',
+              'latitude': (act['location'] is Map ? act['location']['latitude'] : null) ?? act['latitude'],
+              'longitude': (act['location'] is Map ? act['location']['longitude'] : null) ?? act['longitude'],
+              'locationData': act['location'],
               'type': act['type'] ?? 'other',
               'status': act['status'] ?? 'planned',
               'cost': (act['estimatedCost'] != null && act['estimatedCost'] > 0) ? '₹${act['estimatedCost']}/person' : 'Free',
@@ -209,7 +212,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 ),
               ],
             ),
-      floatingActionButton: widget.isSoloTraveler ? null : _buildFAB(),
+      floatingActionButton: (widget.isSoloTraveler || widget.tripData?['isRemovedFromTrip'] == true) ? null : _buildFAB(),
     );
   }
 
@@ -499,7 +502,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                         children: [
                           _buildStatusBadge(activity['status']),
                           const SizedBox(width: 6),
-                          if (!widget.isSoloTraveler) ...[
+                          if (!widget.isSoloTraveler && widget.tripData?['isRemovedFromTrip'] != true) ...[
                             const SizedBox(width: 6),
                             GestureDetector(
                               onTap: () async {

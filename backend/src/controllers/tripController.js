@@ -133,7 +133,10 @@ export const createTrip = async (req, res) => {
 
 export const getUserTrips = async (req, res) => {
   try {
-    const participants = await TripParticipant.find({ userId: req.user._id, status: "approved" }).populate("tripId");
+    const participants = await TripParticipant.find({
+      userId: req.user._id,
+      status: { $in: ["approved", "removed", "left"] },
+    }).populate("tripId");
     const trips = await Promise.all(participants.map(async (p) => {
       if (!p.tripId) return null;
       const tripId = p.tripId._id;
@@ -177,10 +180,14 @@ export const getUserTrips = async (req, res) => {
         }
       }
 
+      const isRemoved = p.status === "removed" || p.status === "left";
+
       return {
         ...p.tripId.toObject(),
         participantStatus: p.status,
         participantRole: p.role,
+        isRemovedFromTrip: isRemoved,
+        leftAt: p.leftAt || (isRemoved ? p.updatedAt : null),
         membersCount: totalMembers > 0 ? totalMembers : tripParticipants.length
       };
     }));
@@ -195,7 +202,11 @@ export const getTripParticipants = async (req, res) => {
   try {
     const { tripId } = req.params;
 
-    const isParticipant = await TripParticipant.findOne({ tripId, userId: req.user._id, status: "approved" });
+    const isParticipant = await TripParticipant.findOne({
+      tripId,
+      userId: req.user._id,
+      status: { $in: ["approved", "removed", "left"] },
+    });
     if (!isParticipant) {
       return res.status(403).json({ success: false, message: "You are not a participant of this trip." });
     }

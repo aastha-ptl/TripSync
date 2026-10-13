@@ -94,7 +94,8 @@ class AppRouter {
       case AppRoutes.joinRequests:
         return _slideRoute(const JoinRequestsScreen());
       case AppRoutes.map:
-        return _slideRoute(const MapScreen());
+        final args = settings.arguments as Map<String, dynamic>?;
+        return _slideRoute(MapScreen(tripData: args?['tripData']));
       case AppRoutes.tripOverview:
         final args = settings.arguments as Map<String, dynamic>?;
         return _slideRoute(TripOverviewScreen(tripData: args?['tripData']));

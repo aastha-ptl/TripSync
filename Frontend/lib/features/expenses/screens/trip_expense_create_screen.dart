@@ -118,8 +118,8 @@ class _TripExpenseCreateScreenState extends State<TripExpenseCreateScreen> {
         final List<dynamic> rawMembers = membersRes['data']?['members'] ?? [];
         final List<dynamic> rawFamily = membersRes['data']?['myNonAppFamilyMembers'] ?? [];
         _isFamilyLeader = membersRes['data']?['isFamilyLeader'] == true;
-        _allMembers = rawMembers.cast<Map<String, dynamic>>();
-        _myFamilyMembers = rawFamily.cast<Map<String, dynamic>>();
+        _allMembers = rawMembers.where((m) => m['isRemoved'] != true && m['status'] != 'removed' && m['status'] != 'left').cast<Map<String, dynamic>>().toList();
+        _myFamilyMembers = rawFamily.where((m) => m['isRemoved'] != true && m['status'] != 'removed' && m['status'] != 'left').cast<Map<String, dynamic>>().toList();
 
         for (var m in _allMembers) {
           final key = m['id'];

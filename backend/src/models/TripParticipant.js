@@ -23,6 +23,12 @@ const tripParticipantSchema = new mongoose.Schema(
       default: "familyMember",
     },
 
+    name: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
     status: {
       type: String,
       enum: ["pending", "approved", "rejected", "removed", "left"],
@@ -37,6 +43,11 @@ const tripParticipantSchema = new mongoose.Schema(
     },
 
     joinedAt: {
+      type: Date,
+      default: null,
+    },
+
+    leftAt: {
       type: Date,
       default: null,
     },

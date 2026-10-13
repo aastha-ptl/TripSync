@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../services/notification_socket_manager.dart';
 import '../../expenses/screens/trip_expense_screen.dart';
+import '../../expenses/screens/trip_expense_detail_screen.dart';
 import '../../chat/screens/chat_screen.dart';
 import '../../itinerary/screens/itinerary_screen.dart';
 import '../../trip/screens/trip_details_screen.dart';
@@ -41,14 +42,28 @@ class _NotificationSheetState extends State<NotificationSheet> {
 
   List<Map<String, dynamic>> _filterNotifications(List<Map<String, dynamic>> items) {
     if (_selectedFilter == 'All') return items;
+    if (_selectedFilter == 'Announcement') {
+      return items.where((n) => n['type'] == 'announcement').toList();
+    }
+    if (_selectedFilter == 'Chat') {
+      return items.where((n) => n['type'] == 'newMessage').toList();
+    }
     if (_selectedFilter == 'Itinerary') {
       return items.where((n) => n['type'] == 'itineraryUpdate').toList();
     }
-    if (_selectedFilter == 'Splits') {
-      return items.where((n) => n['type'] == 'expenseAdded').toList();
+    if (_selectedFilter == 'Poll') {
+      return items
+          .where((n) =>
+              n['type'] == 'pollCreated' ||
+              n['type'] == 'pollUpdated' ||
+              n['type'] == 'pollResult')
+          .toList();
     }
-    if (_selectedFilter == 'Chat') {
-      return items.where((n) => n['type'] == 'newMessage' || n['type'] == 'announcement').toList();
+    if (_selectedFilter == 'Splits') {
+      return items
+          .where((n) =>
+              n['type'] == 'expenseAdded' || n['type'] == 'expenseUpdated')
+          .toList();
     }
     return items;
   }
@@ -150,9 +165,11 @@ class _NotificationSheetState extends State<NotificationSheet> {
             child: Row(
               children: [
                 _buildFilterChip('All'),
-                _buildFilterChip('Itinerary'),
-                _buildFilterChip('Splits'),
+                _buildFilterChip('Announcement'),
                 _buildFilterChip('Chat'),
+                _buildFilterChip('Itinerary'),
+                _buildFilterChip('Poll'),
+                _buildFilterChip('Splits'),
               ],
             ),
           ),
@@ -257,6 +274,7 @@ class _NotificationSheetState extends State<NotificationSheet> {
 
     final String type = item['type']?.toString() ?? '';
     final String tripName = item['tripName']?.toString() ?? '';
+    final String? referenceId = item['referenceId']?.toString();
 
     // Fetch full trip data if available so destination screen gets all trip fields
     Map<String, dynamic>? tripData;
@@ -288,17 +306,30 @@ class _NotificationSheetState extends State<NotificationSheet> {
 
     final Map<String, dynamic> activeTrip = tripData;
 
-    if (type == 'expenseAdded') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => TripExpenseScreen(
-            tripData: activeTrip,
-            onBack: () => Navigator.pop(context),
+    if (type == 'expenseAdded' || type == 'expenseUpdated') {
+      if (referenceId != null && referenceId.isNotEmpty) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TripExpenseDetailScreen(
+              tripId: tripId,
+              expenseId: referenceId,
+              tripData: activeTrip,
+            ),
           ),
-        ),
-      );
-    } else if (type == 'newMessage' || type == 'announcement') {
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TripExpenseScreen(
+              tripData: activeTrip,
+              onBack: () => Navigator.pop(context),
+            ),
+          ),
+        );
+      }
+    } else if (type == 'announcement') {
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -306,7 +337,31 @@ class _NotificationSheetState extends State<NotificationSheet> {
             tripId: tripId,
             tripName: tripName.isNotEmpty ? tripName : (activeTrip['name'] ?? 'Trip Chat'),
             tripData: activeTrip,
-            initialTabIndex: type == 'announcement' ? 0 : 1,
+            initialTabIndex: 0,
+          ),
+        ),
+      );
+    } else if (type == 'newMessage') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            tripId: tripId,
+            tripName: tripName.isNotEmpty ? tripName : (activeTrip['name'] ?? 'Trip Chat'),
+            tripData: activeTrip,
+            initialTabIndex: 1,
+          ),
+        ),
+      );
+    } else if (type == 'pollCreated' || type == 'pollUpdated' || type == 'pollResult') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            tripId: tripId,
+            tripName: tripName.isNotEmpty ? tripName : (activeTrip['name'] ?? 'Trip Chat'),
+            tripData: activeTrip,
+            initialTabIndex: 2,
           ),
         ),
       );
@@ -382,14 +437,22 @@ class _NotificationSheetState extends State<NotificationSheet> {
       icon = Icons.calendar_month_rounded;
       iconBg = const Color(0xFFF3E8FF);
       iconColor = const Color(0xFF9333EA);
-    } else if (type == 'expenseAdded') {
+    } else if (type == 'expenseAdded' || type == 'expenseUpdated') {
       icon = Icons.account_balance_wallet_rounded;
       iconBg = const Color(0xFFE8F5E9);
       iconColor = const Color(0xFF2E7D32);
-    } else if (type == 'announcement' || type == 'newMessage') {
+    } else if (type == 'announcement') {
+      icon = Icons.campaign_rounded;
+      iconBg = const Color(0xFFFEF3C7);
+      iconColor = const Color(0xFFD97706);
+    } else if (type == 'newMessage') {
       icon = Icons.chat_bubble_rounded;
       iconBg = const Color(0xFFE0F2FE);
       iconColor = const Color(0xFF0284C7);
+    } else if (type == 'pollCreated' || type == 'pollUpdated' || type == 'pollResult') {
+      icon = Icons.poll_rounded;
+      iconBg = const Color(0xFFEFF6FF);
+      iconColor = const Color(0xFF1E5AE6);
     }
 
     String timeAgo = 'Just now';

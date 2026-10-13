@@ -10,17 +10,17 @@ const env = {
     process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/tripsync",
 
   JWT_SECRET: process.env.JWT_SECRET || "",
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "15m",
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "365d",
 
   REFRESH_TOKEN_SECRET:
     process.env.REFRESH_TOKEN_SECRET || process.env.JWT_REFRESH_SECRET || "",
   REFRESH_TOKEN_EXPIRES_IN:
-    process.env.REFRESH_TOKEN_EXPIRES_IN || process.env.JWT_REFRESH_EXPIRES_IN || "7d",
+    process.env.REFRESH_TOKEN_EXPIRES_IN || process.env.JWT_REFRESH_EXPIRES_IN || "365d",
 
   JWT_REFRESH_SECRET:
     process.env.REFRESH_TOKEN_SECRET || process.env.JWT_REFRESH_SECRET || "",
   JWT_REFRESH_EXPIRES_IN:
-    process.env.REFRESH_TOKEN_EXPIRES_IN || process.env.JWT_REFRESH_EXPIRES_IN || "7d",
+    process.env.REFRESH_TOKEN_EXPIRES_IN || process.env.JWT_REFRESH_EXPIRES_IN || "365d",
 
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",
 

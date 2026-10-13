@@ -86,12 +86,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         for (var trip in data) {
           final startDate = TripInfoHelper.parseTripDate(trip['startDate'].toString());
           final endDate = TripInfoHelper.parseTripDate(trip['endDate'].toString());
-          
+
+          final isRemoved = trip['isRemovedFromTrip'] == true ||
+              trip['participantStatus'] == 'removed' ||
+              trip['participantStatus'] == 'left';
+
           String status = 'Ongoing';
           Color statusColor = const Color(0xFF1E5AE6); // Default for ongoing
           Color textColor = Colors.white;
-          
-          if (today.isBefore(startDate)) {
+
+          if (isRemoved) {
+            status = trip['participantStatus'] == 'left' ? 'Left' : 'Removed';
+            statusColor = const Color(0xFFDC2626);
+          } else if (today.isBefore(startDate)) {
             status = 'Upcoming';
             statusColor = const Color(0xFF20C060);
             upcomingCount++;
@@ -105,7 +112,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           String imageUrl = trip['coverImage'] ?? 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&auto=format&fit=crop&q=60';
           String location = 'Trip Location';
-          
+
           all.add({
             'id': trip['_id'],
             '_id': trip['_id'],
@@ -117,7 +124,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'location': location,
             'dates': '${fullMonths[startDate.month - 1]} ${startDate.day} - ${fullMonths[endDate.month - 1]} ${endDate.day}, ${endDate.year}',
             'status': status,
-            'statusColor': statusColor.withOpacity(0.1),
+            'statusColor': statusColor.withValues(alpha: 0.1),
             'textColor': statusColor,
             'imageUrl': imageUrl,
             'createdBy': trip['createdBy'],
@@ -126,9 +133,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'membersCount': trip['membersCount'] ?? 1,
             'tripType': trip['tripType'],
             'businessTripType': trip['businessTripType'],
+            'isRemovedFromTrip': isRemoved,
+            'participantStatus': trip['participantStatus'],
+            'leftAt': trip['leftAt'],
           });
 
-          if (status == 'Upcoming' || status == 'Ongoing') {
+          if (!isRemoved && (status == 'Upcoming' || status == 'Ongoing')) {
             upcoming.add({
               'id': trip['_id'],
               '_id': trip['_id'],

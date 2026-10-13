@@ -28,6 +28,10 @@ export const uploadDocument = async (req, res) => {
       return res.status(403).json({ success: false, message: 'You are not a participant in this trip' });
     }
 
+    if (participant && (participant.status === 'removed' || participant.status === 'left')) {
+      return res.status(403).json({ success: false, message: 'You have left or been removed from this trip and cannot upload documents' });
+    }
+
     const isTripLeaderOrCreator = (participant && (participant.role === 'tripLeader' || participant.role === 'creator' || participant.role === 'admin')) ||
                                   (trip && trip.createdBy && trip.createdBy.toString() === uploadedBy.toString());
 
@@ -198,6 +202,13 @@ export const getTripDocuments = async (req, res) => {
       })
       .populate('belongsTo', 'firstName lastName email profilePhoto')
       .populate('uploadedBy', 'firstName lastName email profilePhoto');
+    }
+
+    if (participant && (participant.status === 'removed' || participant.status === 'left')) {
+      const leftAt = participant.leftAt || participant.updatedAt;
+      if (leftAt) {
+        documents = documents.filter(doc => new Date(doc.createdAt) <= new Date(leftAt));
+      }
     }
 
     const docsWithIsMine = documents.map(doc => {

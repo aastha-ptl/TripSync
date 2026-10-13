@@ -90,6 +90,18 @@ const chatMessageSchema = new mongoose.Schema(
       default: false,
     },
 
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+
+    deletedByUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
     readBy: [readReceiptSchema],
   },
   {

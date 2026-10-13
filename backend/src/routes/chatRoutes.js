@@ -5,6 +5,10 @@ import {
   createAnnouncement,
   getGroupMessages,
   sendGroupMessage,
+  editMessage,
+  deleteMessages,
+  getUnreadCount,
+  markMessagesAsRead,
 } from "../controllers/chatController.js";
 
 const router = express.Router({ mergeParams: true });
@@ -20,5 +24,10 @@ router
   .route("/messages")
   .get(getGroupMessages)
   .post(sendGroupMessage);
+
+router.get("/unread-count", getUnreadCount);
+router.post("/mark-read", markMessagesAsRead);
+router.post("/messages/delete", deleteMessages);
+router.put("/messages/:messageId", editMessage);
 
 export default router;

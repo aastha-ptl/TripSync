@@ -8,6 +8,12 @@ const pollOptionSchema = new mongoose.Schema(
       trim: true,
       maxlength: 200,
     },
+    voterIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
   },
   {
     _id: true,

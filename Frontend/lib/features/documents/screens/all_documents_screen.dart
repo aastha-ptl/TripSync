@@ -66,6 +66,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
   }
 
   bool get _canUpload {
+    if (widget.tripData?['isRemovedFromTrip'] == true) return false;
     if (widget.isFromMemberDocs) return false;
     if (widget.tripData == null) return false;
     final titleLower = widget.title?.toLowerCase() ?? '';
@@ -580,6 +581,7 @@ class _AllDocumentsScreenState extends State<AllDocumentsScreen> {
   }
 
   bool _canModifyDoc(dynamic doc) {
+    if (widget.tripData?['isRemovedFromTrip'] == true) return false;
     if (widget.isFromMemberDocs) return false;
     final titleLower = widget.title?.toLowerCase() ?? '';
     // For Trip Documents, ONLY trip leader or creator can add, update, delete

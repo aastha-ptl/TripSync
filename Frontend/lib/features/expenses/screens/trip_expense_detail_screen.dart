@@ -613,13 +613,38 @@ class _TripExpenseDetailScreenState extends State<TripExpenseDetailScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      p['isCurrentUser'] == true ? 'You' : (p['name'] ?? 'User'),
-                                      style: const TextStyle(
-                                        color: AppColors.textPrimary,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    Row(
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            p['isCurrentUser'] == true ? 'You' : (p['name'] ?? 'User'),
+                                            style: const TextStyle(
+                                              color: AppColors.textPrimary,
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (p['isRemoved'] == true) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFFEE2E2),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Text(
+                                              'Removed Traveler',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFFDC2626),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                     if (p['leaderName'] != null && p['leaderName'].toString().trim().isNotEmpty) ...[
                                       const SizedBox(height: 2),

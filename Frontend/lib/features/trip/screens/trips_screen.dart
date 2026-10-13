@@ -75,12 +75,20 @@ class _TripsScreenState extends State<TripsScreen> {
           _allTrips = data.map((trip) {
             final startDate = TripInfoHelper.parseTripDate(trip['startDate'].toString());
             final endDate = TripInfoHelper.parseTripDate(trip['endDate'].toString());
-            
+
+            final isRemoved = trip['isRemovedFromTrip'] == true ||
+                trip['participantStatus'] == 'removed' ||
+                trip['participantStatus'] == 'left';
+
             String status = 'Ongoing';
             Color statusColor = const Color(0xFFE8F0FE);
             Color textColor = const Color(0xFF1E5AE6);
-            
-            if (today.isBefore(startDate)) {
+
+            if (isRemoved) {
+              status = trip['participantStatus'] == 'left' ? 'Left' : 'Removed';
+              statusColor = const Color(0xFFFEE2E2);
+              textColor = const Color(0xFFDC2626);
+            } else if (today.isBefore(startDate)) {
               status = 'Upcoming';
             } else if (today.isAfter(endDate)) {
               status = 'Completed';
@@ -90,14 +98,14 @@ class _TripsScreenState extends State<TripsScreen> {
 
             final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             final dateStr = '${months[startDate.month - 1]} ${startDate.day} - ${months[endDate.month - 1]} ${endDate.day}, ${endDate.year}';
-            
+
             String roleStr = trip['participantRole'] ?? 'Member';
             if (roleStr == 'tripLeader') roleStr = 'Trip Leader';
             if (roleStr == 'soloTraveler') roleStr = 'Solo Traveler';
 
             String imageUrl = trip['coverImage'] ?? 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&auto=format&fit=crop&q=60';
             if (imageUrl.startsWith('http://localhost')) {
-               // handle localhost issues if needed, but assuming valid URL
+                // handle localhost issues if needed, but assuming valid URL
             }
 
             return {
@@ -120,6 +128,9 @@ class _TripsScreenState extends State<TripsScreen> {
               'tripType': trip['tripType'],
               'businessTripType': trip['businessTripType'],
               'inviteToken': trip['invitationCode']?.toString() ?? trip['inviteToken']?.toString() ?? 'No Code Available',
+              'isRemovedFromTrip': isRemoved,
+              'participantStatus': trip['participantStatus'],
+              'leftAt': trip['leftAt'],
             };
           }).toList();
           _isLoading = false;
@@ -498,7 +509,7 @@ class _TripsScreenState extends State<TripsScreen> {
                           const SizedBox(width: 8),
                           Row(
                             children: [
-                              if (trip['role'] == 'Trip Leader') ...[
+                              if (trip['role'] == 'Trip Leader' && trip['isRemovedFromTrip'] != true) ...[
                                 IconButton(
                                   icon: const Icon(Icons.edit_outlined, size: 20, color: Color(0xFF64748B)),
                                   padding: EdgeInsets.zero,
@@ -517,7 +528,8 @@ class _TripsScreenState extends State<TripsScreen> {
                                 ),
                                 const SizedBox(width: 8),
                               ],
-                              PopupMenuButton<String>(
+                              if (trip['isRemovedFromTrip'] != true)
+                                PopupMenuButton<String>(
                                 icon: const Icon(
                                   Icons.more_vert,
                                   color: Color(0xFF94A3B8),

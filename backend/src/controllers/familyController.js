@@ -122,26 +122,61 @@ export const validateFamilyMemberEmail = async ({ tripId, email, currentUserId, 
     }
   }
 
-  // C) Is this email in another Family in this trip?
-  const otherFamilyQuery = {
-    tripId,
-    $or: [
-      { familyLeaderId: user._id },
-      { "members.userId": user._id },
-      { "members.email": emailTrimmed },
-    ],
-  };
+  // C) Is this email in another active Family in this trip?
+  const familyFilter = { tripId };
   if (currentFamilyId) {
-    otherFamilyQuery._id = { $ne: currentFamilyId };
+    familyFilter._id = { $ne: currentFamilyId };
   }
-  const otherFamily = await Family.findOne(otherFamilyQuery);
-  if (otherFamily) {
-    return {
-      valid: false,
-      status: 400,
-      isAlreadyInTrip: true,
-      message: `Email ${email} is already part of another family in this trip.`,
-    };
+  const tripFamilies = await Family.find(familyFilter);
+
+  for (const fam of tripFamilies) {
+    if (currentUserId && fam.familyLeaderId && fam.familyLeaderId.toString() === currentUserId.toString()) {
+      continue;
+    }
+
+    if (user._id && fam.familyLeaderId && fam.familyLeaderId.toString() === user._id.toString()) {
+      const leaderParticipant = await TripParticipant.findOne({
+        tripId,
+        userId: user._id,
+        status: "approved",
+      });
+      if (leaderParticipant) {
+        return {
+          valid: false,
+          status: 400,
+          isAlreadyInTrip: true,
+          message: `User ${user.firstName} ${user.lastName} (${email}) is already a Family Leader in this trip.`,
+        };
+      }
+    }
+
+    const matchingMember = fam.members.find((m) => {
+      const emailMatches = m.email && m.email.toLowerCase() === emailTrimmed;
+      const userMatches = user._id && m.userId && m.userId.toString() === user._id.toString();
+      const isActive = m.status !== "left" && m.status !== "removed";
+      return (emailMatches || userMatches) && isActive;
+    });
+
+    if (matchingMember) {
+      let isActuallyApproved = true;
+      if (matchingMember.userId) {
+        const p = await TripParticipant.findOne({
+          tripId,
+          userId: matchingMember.userId,
+        });
+        if (p && (p.status === "left" || p.status === "removed")) {
+          isActuallyApproved = false;
+        }
+      }
+      if (isActuallyApproved) {
+        return {
+          valid: false,
+          status: 400,
+          isAlreadyInTrip: true,
+          message: `Email ${email} is already part of another family in this trip.`,
+        };
+      }
+    }
   }
 
   // D) Is there a pending join request with this email or user?
@@ -406,24 +441,17 @@ export const updateMyFamily = async (req, res) => {
     // Ensure TripParticipant exists for any linked registered accounts
     for (const m of processedMembers) {
       if (m.userId) {
-        const existingMemberParticipant = await TripParticipant.findOne({
-          tripId,
-          userId: m.userId,
-        });
-
-        if (!existingMemberParticipant) {
-          await TripParticipant.create({
-            tripId,
-            userId: m.userId,
+        await TripParticipant.findOneAndUpdate(
+          { tripId, userId: m.userId },
+          {
             role: "familyMember",
             status: "approved",
             familyId: family._id,
-            joinedAt: new Date(),
-          });
-        } else if (!existingMemberParticipant.familyId || existingMemberParticipant.familyId.toString() !== family._id.toString()) {
-          existingMemberParticipant.familyId = family._id;
-          await existingMemberParticipant.save();
-        }
+            leftAt: null,
+            $setOnInsert: { joinedAt: new Date() },
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
       }
     }
 

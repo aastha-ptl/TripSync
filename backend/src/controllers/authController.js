@@ -29,18 +29,17 @@ const linkUserToFamilies = async (user) => {
       if (updated) {
         await family.save();
         
-        // Ensure no duplicate participant exists
-        const existing = await TripParticipant.findOne({ tripId: family.tripId, userId: user._id });
-        if (!existing) {
-          await TripParticipant.create({
-            tripId: family.tripId,
-            userId: user._id,
+        await TripParticipant.findOneAndUpdate(
+          { tripId: family.tripId, userId: user._id },
+          {
             role: "familyMember",
             status: "approved",
-            joinedAt: new Date(),
             familyId: family._id,
-          });
-        }
+            leftAt: null,
+            $setOnInsert: { joinedAt: new Date() },
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
       }
     }
   } catch (err) {

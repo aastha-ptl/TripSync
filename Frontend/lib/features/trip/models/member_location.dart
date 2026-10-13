@@ -6,6 +6,7 @@ class MemberLocation {
   final double longitude;
   final String familyName;
   final bool isOnline;
+  final bool isSharing;
   final DateTime lastUpdated;
 
   const MemberLocation({
@@ -16,6 +17,7 @@ class MemberLocation {
     required this.longitude,
     required this.familyName,
     required this.isOnline,
+    this.isSharing = true,
     required this.lastUpdated,
   });
 }

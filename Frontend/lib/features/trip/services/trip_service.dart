@@ -355,4 +355,66 @@ class TripService {
       return {'success': false, 'message': 'Connection error: ${e.toString()}'};
     }
   }
+
+  Future<Map<String, dynamic>> leaveTrip(
+    String tripId, {
+    String? leaveType,
+    String? newTripLeaderId,
+    String? newFamilyLeaderId,
+    String? newFamilyLeaderEmail,
+  }) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('$baseUrl/trips/$tripId/leave');
+      final body = <String, dynamic>{};
+      if (leaveType != null) body['leaveType'] = leaveType;
+      if (newTripLeaderId != null) body['newTripLeaderId'] = newTripLeaderId;
+      if (newFamilyLeaderId != null) body['newFamilyLeaderId'] = newFamilyLeaderId;
+      if (newFamilyLeaderEmail != null) body['newFamilyLeaderEmail'] = newFamilyLeaderEmail;
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> removeFamilyMember(
+    String tripId,
+    String memberId,
+  ) async {
+    try {
+      final token = await _authService.getAccessToken();
+      if (token == null) {
+        return {'success': false, 'message': 'Not authenticated'};
+      }
+
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final url = Uri.parse('$baseUrl/trips/$tripId/remove-family-member');
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'memberId': memberId}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: ${e.toString()}'};
+    }
+  }
 }
+

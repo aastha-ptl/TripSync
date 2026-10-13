@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/routes/app_routes.dart';
-import '../../../core/theme/app_colors.dart';
+import '../services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -19,19 +19,34 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 2),
     );
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeIn),
     );
 
     _controller.forward();
+    _checkAuthAndNavigate();
+  }
 
-    Timer(const Duration(seconds: 6), () {
-      if (mounted) {
+  Future<void> _checkAuthAndNavigate() async {
+    final startTime = DateTime.now();
+    final bool loggedIn = await AuthService().isLoggedIn();
+    final elapsed = DateTime.now().difference(startTime);
+
+    // Give users a smooth brand splash experience (~2.5 seconds)
+    const minSplashDuration = Duration(milliseconds: 2500);
+    if (elapsed < minSplashDuration) {
+      await Future.delayed(minSplashDuration - elapsed);
+    }
+
+    if (mounted) {
+      if (loggedIn) {
+        Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
+      } else {
         Navigator.of(context).pushReplacementNamed(AppRoutes.login);
       }
-    });
+    }
   }
 
   @override

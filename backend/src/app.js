@@ -66,8 +66,12 @@ app.use("/api/users", userRoutes);
 import documentRoutes from "./routes/documentRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import locationRoutes from "./routes/locationRoutes.js";
+import pollRoutes from "./routes/pollRoutes.js";
 app.use("/api/documents", documentRoutes);
 app.use("/api/trips/:tripId/chat", chatRoutes);
+app.use("/api/trips/:tripId/locations", locationRoutes);
+app.use("/api/trips/:tripId/polls", pollRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 

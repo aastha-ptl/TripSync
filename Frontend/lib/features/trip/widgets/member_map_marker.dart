@@ -32,7 +32,7 @@ class MemberMapMarker extends StatelessWidget {
                     : (member.isOnline ? const Color(0xFF20C060) : const Color(0xFF94A3B8)), // Green for online, Grey for offline
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
+                    color: Colors.black.withValues(alpha: 0.15),
                     blurRadius: 6,
                     offset: const Offset(0, 3),
                   ),
@@ -45,7 +45,16 @@ class MemberMapMarker extends StatelessWidget {
               backgroundColor: Colors.white,
               child: CircleAvatar(
                 radius: 17,
-                backgroundImage: CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(member.profileImage)),
+                backgroundImage: member.profileImage.trim().isNotEmpty
+                    ? CachedNetworkImageProvider(ImageUtils.getOptimizedImageUrl(member.profileImage))
+                    : null,
+                child: member.profileImage.trim().isEmpty
+                    ? Icon(
+                        Icons.person,
+                        size: 18,
+                        color: isCurrentUser ? const Color(0xFF1E5AE6) : const Color(0xFF64748B),
+                      )
+                    : null,
               ),
             ),
             // Small online status dot indicator
@@ -70,11 +79,11 @@ class MemberMapMarker extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(6),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withValues(alpha: 0.06),
                 blurRadius: 4,
               ),
             ],

@@ -918,23 +918,25 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> with SingleTick
                 ),
               ],
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add_a_photo, color: Colors.white),
-        label: const Text('Add Photo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        elevation: 4,
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => UploadPhotoScreen(tripData: widget.tripData),
+      floatingActionButton: widget.tripData['isRemovedFromTrip'] == true
+          ? null
+          : FloatingActionButton.extended(
+              backgroundColor: AppColors.primary,
+              icon: const Icon(Icons.add_a_photo, color: Colors.white),
+              label: const Text('Add Photo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              elevation: 4,
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => UploadPhotoScreen(tripData: widget.tripData),
+                  ),
+                );
+                if (result == true) {
+                  _fetchPhotos();
+                }
+              },
             ),
-          );
-          if (result == true) {
-            _fetchPhotos();
-          }
-        },
-      ),
     );
   }
 }

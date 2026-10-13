@@ -1,6 +1,10 @@
+import 'geoapify_place.dart';
+
 enum LocationType {
   hotel,
   airport,
+  restaurant,
+  sightseeing,
   activity,
   general,
 }
@@ -12,6 +16,10 @@ class TripLocation {
   final double longitude;
   final LocationType type;
   final String description;
+  final String? address;
+  final Map<String, dynamic>? rawActivity;
+  final bool isPublicPlace;
+  final GeoapifyPlace? placeDetails;
 
   const TripLocation({
     required this.id,
@@ -20,5 +28,9 @@ class TripLocation {
     required this.longitude,
     required this.type,
     required this.description,
+    this.address,
+    this.rawActivity,
+    this.isPublicPlace = false,
+    this.placeDetails,
   });
 }

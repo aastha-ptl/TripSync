@@ -18,7 +18,7 @@ export const initSocket = (server) => {
     // Join user room for personal notifications
     socket.on("join_user_room", (userId) => {
       if (userId) {
-        const roomName = `user_${userId}`;
+        const roomName = `user_${userId.toString().trim()}`;
         socket.join(roomName);
         console.log(`[Socket.io] Socket ${socket.id} joined user room ${roomName}`);
       }
@@ -27,7 +27,7 @@ export const initSocket = (server) => {
     // Leave user room
     socket.on("leave_user_room", (userId) => {
       if (userId) {
-        const roomName = `user_${userId}`;
+        const roomName = `user_${userId.toString().trim()}`;
         socket.leave(roomName);
         console.log(`[Socket.io] Socket ${socket.id} left user room ${roomName}`);
       }
@@ -36,7 +36,7 @@ export const initSocket = (server) => {
     // Join trip room for announcements and group chat
     socket.on("join_trip_room", (tripId) => {
       if (tripId) {
-        const roomName = `trip_${tripId}`;
+        const roomName = `trip_${tripId.toString().trim()}`;
         socket.join(roomName);
         console.log(`[Socket.io] Socket ${socket.id} joined trip room ${roomName}`);
       }
@@ -45,7 +45,7 @@ export const initSocket = (server) => {
     // Leave trip room
     socket.on("leave_trip_room", (tripId) => {
       if (tripId) {
-        const roomName = `trip_${tripId}`;
+        const roomName = `trip_${tripId.toString().trim()}`;
         socket.leave(roomName);
         console.log(`[Socket.io] Socket ${socket.id} left trip room ${roomName}`);
       }
@@ -68,7 +68,7 @@ export const getIO = () => {
 
 export const emitToUserRoom = (userId, event, data) => {
   if (io && userId) {
-    const roomName = `user_${userId}`;
+    const roomName = `user_${userId.toString().trim()}`;
     io.to(roomName).emit(event, data);
     console.log(`[Socket.io] Emitted '${event}' to user room ${roomName}`);
   }
@@ -76,7 +76,7 @@ export const emitToUserRoom = (userId, event, data) => {
 
 export const emitToTripRoom = (tripId, event, data) => {
   if (io && tripId) {
-    const roomName = `trip_${tripId}`;
+    const roomName = `trip_${tripId.toString().trim()}`;
     io.to(roomName).emit(event, data);
     console.log(`[Socket.io] Emitted '${event}' to trip room ${roomName}`);
   }

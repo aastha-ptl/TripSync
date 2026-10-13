@@ -3,6 +3,9 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../services/itinerary_service.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
+import 'location_picker_screen.dart';
 
 class AddEventScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
@@ -35,6 +38,9 @@ class _AddEventScreenState extends State<AddEventScreen> {
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   String _selectedCategory = 'sightseeing';
+
+  double? _pinnedLatitude;
+  double? _pinnedLongitude;
 
   DateTime? _tripStartDate;
   DateTime? _tripEndDate;
@@ -95,7 +101,19 @@ class _AddEventScreenState extends State<AddEventScreen> {
     if (widget.existingActivity != null) {
       final activity = widget.existingActivity!;
       _titleController.text = activity['title'] ?? '';
-      _locationController.text = activity['location'] ?? '';
+      if (activity['location'] is Map) {
+        _locationController.text = (activity['location']['name'] ?? activity['location']['address'] ?? '').toString();
+        _pinnedLatitude = double.tryParse(activity['location']['latitude']?.toString() ?? '');
+        _pinnedLongitude = double.tryParse(activity['location']['longitude']?.toString() ?? '');
+      } else {
+        _locationController.text = activity['location']?.toString() ?? '';
+      }
+      if (activity['latitude'] != null) {
+        _pinnedLatitude = double.tryParse(activity['latitude'].toString()) ?? _pinnedLatitude;
+      }
+      if (activity['longitude'] != null) {
+        _pinnedLongitude = double.tryParse(activity['longitude'].toString()) ?? _pinnedLongitude;
+      }
       _timeController.text = activity['time'] ?? '';
       if (_timeController.text.isNotEmpty) {
         _selectedTime = _parseTimeOfDay(_timeController.text);
@@ -523,7 +541,14 @@ class _AddEventScreenState extends State<AddEventScreen> {
 
       final eventData = {
         'title': _titleController.text.trim(),
-        'location': _locationController.text.trim(),
+        'location': {
+          'name': _locationController.text.trim(),
+          'address': _locationController.text.trim(),
+          'latitude': _pinnedLatitude,
+          'longitude': _pinnedLongitude,
+        },
+        'latitude': _pinnedLatitude,
+        'longitude': _pinnedLongitude,
         'date': formattedDate,
         'time': timeText,
         'type': _selectedCategory,
@@ -619,6 +644,8 @@ class _AddEventScreenState extends State<AddEventScreen> {
                 icon: Icons.location_on_outlined,
                 validator: (val) => val == null || val.isEmpty ? 'Location is required' : null,
               ),
+              const SizedBox(height: 8),
+              _buildPinLocationButton(),
               const SizedBox(height: 24),
 
               _buildSectionTitle('Date & Timing'),
@@ -1040,5 +1067,139 @@ class _AddEventScreenState extends State<AddEventScreen> {
               ),
       ),
     );
+  }
+
+  Widget _buildPinLocationButton() {
+    final hasPin = _pinnedLatitude != null && _pinnedLongitude != null;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _openMapPinPicker,
+      child: Container(
+        decoration: BoxDecoration(
+          color: hasPin ? const Color(0xFFF0FDF4) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: hasPin ? const Color(0xFF22C55E) : const Color(0xFFE2E8F0),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: hasPin ? const Color(0xFF22C55E) : const Color(0xFF0072FF).withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                hasPin ? Icons.check : Icons.pin_drop_outlined,
+                color: hasPin ? Colors.white : const Color(0xFF0072FF),
+                size: 16,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasPin ? 'Location Pinned on Map' : 'Pin Location on Map (Optional)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: hasPin ? const Color(0xFF15803D) : const Color(0xFF0F172A),
+                    ),
+                  ),
+                  if (hasPin) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '${_pinnedLatitude!.toStringAsFixed(4)}, ${_pinnedLongitude!.toStringAsFixed(4)} • Tap to adjust',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (hasPin)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() {
+                    _pinnedLatitude = null;
+                    _pinnedLongitude = null;
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(6.0),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Icon(Icons.close, size: 16, color: Color(0xFF64748B)),
+                ),
+              )
+            else
+              const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xFF94A3B8)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openMapPinPicker() async {
+    FocusScope.of(context).unfocus();
+
+    LatLng? initialPoint;
+    if (_pinnedLatitude != null && _pinnedLongitude != null) {
+      initialPoint = LatLng(_pinnedLatitude!, _pinnedLongitude!);
+    } else {
+      try {
+        final pos = await Geolocator.getLastKnownPosition();
+        if (pos != null) {
+          initialPoint = LatLng(pos.latitude, pos.longitude);
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LocationPickerScreen(
+          initialLocation: initialPoint,
+          initialLocationName: _locationController.text.trim().isNotEmpty
+              ? _locationController.text.trim()
+              : _titleController.text.trim(),
+        ),
+      ),
+    );
+
+    if (result != null && result is Map<String, dynamic> && mounted) {
+      setState(() {
+        _pinnedLatitude = (result['latitude'] as num?)?.toDouble();
+        _pinnedLongitude = (result['longitude'] as num?)?.toDouble();
+
+        final addr = result['address']?.toString() ?? '';
+        if (addr.isNotEmpty && _locationController.text.trim().isEmpty) {
+          _locationController.text = addr;
+        } else if (_locationController.text.trim().isEmpty) {
+          _locationController.text = _titleController.text.trim().isNotEmpty
+              ? _titleController.text.trim()
+              : 'Pinned Location';
+        }
+      });
+    }
   }
 }

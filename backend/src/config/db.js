@@ -1,5 +1,13 @@
+import dns from "node:dns";
 import mongoose from "mongoose";
 import env from "./env.js";
+
+// Fix Windows DNS querySrv ECONNREFUSED for MongoDB Atlas
+try {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+} catch (e) {
+  // Ignore if not supported in environment
+}
 
 mongoose.set("strictQuery", true);
 
