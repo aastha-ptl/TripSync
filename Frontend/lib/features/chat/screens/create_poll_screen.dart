@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/app_colors.dart';
 import '../models/poll.dart';
 import '../services/poll_service.dart';
 
@@ -203,7 +204,7 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
           _isEditing ? 'Edit Poll' : 'Create Poll',
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 19,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -213,69 +214,20 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                padding: const EdgeInsets.all(20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Section 1: Question
-                    const Text(
-                      'Poll Question',
-                      style: TextStyle(
-                        color: Color(0xFF0F172A),
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: _questionController.text.trim().isNotEmpty
-                              ? const Color(0xFF0072FF)
-                              : const Color(0xFFE2E8F0),
-                          width: _questionController.text.trim().isNotEmpty ? 1.5 : 1,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 2, right: 12),
-                            child: Icon(Icons.help_outline_rounded, color: Color(0xFF0072FF), size: 22),
-                          ),
-                          Expanded(
-                            child: TextField(
-                              controller: _questionController,
-                              maxLength: 255,
-                              maxLines: 3,
-                              minLines: 1,
-                              style: const TextStyle(
-                                color: Color(0xFF0F172A),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              decoration: const InputDecoration(
-                                hintText: 'What would you like to ask?',
-                                hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 15),
-                                border: InputBorder.none,
-                                isDense: true,
-                                contentPadding: EdgeInsets.zero,
-                                counterStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                    _buildSectionTitle('Poll Question'),
+                    const SizedBox(height: 12),
+                    _buildInputField(
+                      controller: _questionController,
+                      label: 'Poll Question',
+                      hint: 'e.g. Where should we go for lunch?',
+                      icon: Icons.title_outlined,
+                      maxLines: 2,
+                      onChanged: (_) => setState(() {}),
                     ),
 
                     const SizedBox(height: 24),
@@ -284,25 +236,18 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Poll Options',
-                          style: TextStyle(
-                            color: Color(0xFF0F172A),
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        _buildSectionTitle('Poll Options'),
                         Text(
                           '${_optionControllers.length} Options',
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
                     ListView.separated(
                       shrinkWrap: true,
@@ -310,75 +255,22 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
                       itemCount: _optionControllers.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
-                        final controller = _optionControllers[index];
-                        final isFilled = controller.text.trim().isNotEmpty;
-
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isFilled ? const Color(0xFF0072FF) : const Color(0xFFE2E8F0),
-                              width: isFilled ? 1.4 : 1,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.02),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 28,
-                                height: 28,
-                                decoration: BoxDecoration(
-                                  color: isFilled ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
-                                  shape: BoxShape.circle,
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  '${index + 1}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: isFilled ? const Color(0xFF0072FF) : const Color(0xFF64748B),
+                        return _buildInputField(
+                          controller: _optionControllers[index],
+                          label: 'Option ${index + 1}',
+                          hint: 'Enter option ${index + 1}',
+                          icon: Icons.radio_button_unchecked,
+                          onChanged: (_) => setState(() {}),
+                          suffixIcon: _optionControllers.length > 2
+                              ? IconButton(
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    color: AppColors.textLight,
+                                    size: 18,
                                   ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextField(
-                                  controller: controller,
-                                  maxLength: 100,
-                                  style: const TextStyle(
-                                    color: Color(0xFF0F172A),
-                                    fontSize: 14.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  decoration: InputDecoration(
-                                    hintText: 'Option ${index + 1}',
-                                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-                                    border: InputBorder.none,
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                    counterText: '${controller.text.length}/100',
-                                    counterStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5),
-                                  ),
-                                ),
-                              ),
-                              if (_optionControllers.length > 2)
-                                IconButton(
-                                  icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8), size: 19),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
                                   onPressed: () => _removeOption(index),
-                                ),
-                            ],
-                          ),
+                                )
+                              : null,
                         );
                       },
                     ),
@@ -388,28 +280,28 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
                     // Add one more option button
                     InkWell(
                       onTap: _addOption,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: BoxDecoration(
                           color: const Color(0xFFEFF6FF),
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: const Color(0xFFBFDBFE),
                             width: 1.2,
                           ),
                         ),
-                        child: Row(
+                        child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(Icons.add_circle_outline_rounded, color: Color(0xFF0072FF), size: 20),
+                          children: [
+                            Icon(Icons.add_circle_outline_rounded, color: Color(0xFF0072FF), size: 18),
                             SizedBox(width: 8),
                             Text(
                               '+ Add one more option',
                               style: TextStyle(
                                 color: Color(0xFF0072FF),
-                                fontSize: 14.5,
+                                fontSize: 14,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -421,15 +313,8 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
                     const SizedBox(height: 24),
 
                     // Section 3: Settings
-                    const Text(
-                      'Settings',
-                      style: TextStyle(
-                        color: Color(0xFF0F172A),
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    _buildSectionTitle('Settings'),
+                    const SizedBox(height: 12),
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -437,13 +322,13 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
                         border: Border.all(color: const Color(0xFFE2E8F0)),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 6,
+                            color: Colors.black.withValues(alpha: 0.01),
+                            blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
                         ],
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       child: SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
                         value: _allowMultipleAnswers,
@@ -455,14 +340,14 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
                         title: const Text(
                           'Allow multiple answers',
                           style: TextStyle(
-                            fontSize: 14.5,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         subtitle: const Text(
                           'Members can vote for more than one option',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                         ),
                       ),
                     ),
@@ -537,6 +422,58 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+        color: AppColors.textPrimary,
+      ),
+    );
+  }
+
+  Widget _buildInputField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    int maxLines = 1,
+    Widget? suffixIcon,
+    void Function(String)? onChanged,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.01),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        controller: controller,
+        maxLines: maxLines,
+        onChanged: onChanged,
+        style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          hintText: hint,
+          hintStyle: const TextStyle(color: AppColors.textLight, fontSize: 13),
+          prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 18),
+          suffixIcon: suffixIcon,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
       ),
     );

@@ -8,11 +8,17 @@ import '../../../core/utils/date_formatter.dart';
 class ItineraryScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
   final bool isSoloTraveler;
+  final int? initialDayNumber;
+  final DateTime? initialDate;
+  final String? initialActivityId;
 
   const ItineraryScreen({
     super.key, 
     this.tripData,
     this.isSoloTraveler = false,
+    this.initialDayNumber,
+    this.initialDate,
+    this.initialActivityId,
   });
 
   @override
@@ -21,6 +27,7 @@ class ItineraryScreen extends StatefulWidget {
 
 class _ItineraryScreenState extends State<ItineraryScreen> {
   final ItineraryService _itineraryService = ItineraryService();
+  final ScrollController _dayScrollController = ScrollController();
   bool _isLoading = true;
   int _selectedDayIndex = 0;
   List<Map<String, dynamic>> _days = [];
@@ -30,6 +37,12 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   void initState() {
     super.initState();
     _fetchItinerary();
+  }
+
+  @override
+  void dispose() {
+    _dayScrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchItinerary() async {
@@ -113,21 +126,61 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
 
     int initialSelectedIndex = 0;
     if (loadedDays.isNotEmpty) {
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      
-      final startDate = loadedDays.first['rawDate'] as DateTime;
-      final endDate = loadedDays.last['rawDate'] as DateTime;
-      
-      if (today.isAfter(endDate)) {
-        initialSelectedIndex = 0;
-      } else if (today.isBefore(startDate)) {
-        initialSelectedIndex = 0;
-      } else {
-        initialSelectedIndex = loadedDays.indexWhere((d) => 
-          (d['rawDate'] as DateTime).isAtSameMomentAs(today)
+      bool matched = false;
+
+      // 1. Try matching by initialActivityId
+      if (widget.initialActivityId != null && widget.initialActivityId!.isNotEmpty) {
+        final targetActId = widget.initialActivityId!.toString();
+        for (final entry in loadedActivities.entries) {
+          if (entry.value.any((act) => act['_id']?.toString() == targetActId)) {
+            initialSelectedIndex = entry.key;
+            matched = true;
+            break;
+          }
+        }
+      }
+
+      // 2. Try matching by initialDayNumber
+      if (!matched && widget.initialDayNumber != null && widget.initialDayNumber! > 0) {
+        final targetIdx = widget.initialDayNumber! - 1;
+        if (targetIdx >= 0 && targetIdx < loadedDays.length) {
+          initialSelectedIndex = targetIdx;
+          matched = true;
+        }
+      }
+
+      // 3. Try matching by initialDate
+      if (!matched && widget.initialDate != null) {
+        final targetDate = DateTime(
+          widget.initialDate!.year,
+          widget.initialDate!.month,
+          widget.initialDate!.day,
         );
-        if (initialSelectedIndex == -1) initialSelectedIndex = 0;
+        final foundIdx = loadedDays.indexWhere(
+          (d) => (d['rawDate'] as DateTime).isAtSameMomentAs(targetDate),
+        );
+        if (foundIdx != -1) {
+          initialSelectedIndex = foundIdx;
+          matched = true;
+        }
+      }
+
+      // 4. Default fallback: current date if within trip range, else Day 1
+      if (!matched) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        
+        final startDate = loadedDays.first['rawDate'] as DateTime;
+        final endDate = loadedDays.last['rawDate'] as DateTime;
+        
+        if (today.isAfter(endDate) || today.isBefore(startDate)) {
+          initialSelectedIndex = 0;
+        } else {
+          initialSelectedIndex = loadedDays.indexWhere((d) => 
+            (d['rawDate'] as DateTime).isAtSameMomentAs(today)
+          );
+          if (initialSelectedIndex == -1) initialSelectedIndex = 0;
+        }
       }
     }
 
@@ -136,6 +189,18 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       _activities = loadedActivities;
       _selectedDayIndex = initialSelectedIndex;
       _isLoading = false;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_dayScrollController.hasClients && _days.isNotEmpty) {
+        final maxScroll = _dayScrollController.position.maxScrollExtent;
+        final targetOffset = (_selectedDayIndex * 82.0 - 60.0).clamp(0.0, maxScroll);
+        _dayScrollController.animateTo(
+          targetOffset,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+        );
+      }
     });
   }
 
@@ -273,6 +338,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       padding: const EdgeInsets.symmetric(vertical: 12),
       color: AppColors.surface,
       child: ListView.builder(
+        controller: _dayScrollController,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         physics: const BouncingScrollPhysics(),

@@ -38,6 +38,7 @@ export const getNotifications = async (req, res) => {
           message: n.message,
           referenceId: n.referenceId ? n.referenceId.toString() : null,
           referenceType: n.referenceType,
+          metadata: n.metadata || {},
           isRead: n.isRead,
           createdAt: n.createdAt,
         };

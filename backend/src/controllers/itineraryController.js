@@ -149,6 +149,11 @@ export const addActivity = async (req, res) => {
         message: `${userName} added "${activity.title}" to the trip itinerary.`,
         referenceId: activity._id,
         referenceType: "Activity",
+        metadata: {
+          dayNumber: itineraryDay.dayNumber,
+          date: itineraryDay.date,
+          activityId: activity._id.toString(),
+        },
       });
 
       emitToTripRoom(tripId, "itinerary_updated", {
@@ -353,6 +358,11 @@ export const updateActivity = async (req, res) => {
         message: `${userName} updated "${activity.title}" in the trip itinerary.`,
         referenceId: activity._id,
         referenceType: "Activity",
+        metadata: {
+          dayNumber: itineraryDay.dayNumber,
+          date: itineraryDay.date,
+          activityId: activity._id.toString(),
+        },
       });
     } catch (notifErr) {
       console.error("Failed to send itinerary update notification:", notifErr);

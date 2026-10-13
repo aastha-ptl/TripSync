@@ -14,6 +14,7 @@ export const createAndSendNotification = async ({
   message,
   referenceId = null,
   referenceType = null,
+  metadata = {},
 }) => {
   try {
     if (!targetUserIds || targetUserIds.length === 0) return [];
@@ -45,6 +46,7 @@ export const createAndSendNotification = async ({
         message,
         referenceId,
         referenceType,
+        metadata,
         isRead: false,
       });
 
@@ -60,6 +62,7 @@ export const createAndSendNotification = async ({
           ? notification.referenceId.toString()
           : null,
         referenceType: notification.referenceType,
+        metadata: notification.metadata || {},
         isRead: false,
         createdAt: notification.createdAt,
       };

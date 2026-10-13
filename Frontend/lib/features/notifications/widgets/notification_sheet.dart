@@ -367,12 +367,24 @@ class _NotificationSheetState extends State<NotificationSheet> {
       );
     } else if (type == 'itineraryUpdate') {
       final role = (activeTrip['role'] ?? activeTrip['participantRole'])?.toString().toLowerCase();
+      final metadata = item['metadata'] is Map ? Map<String, dynamic>.from(item['metadata']) : null;
+      final int? dayNumber = metadata?['dayNumber'] != null
+          ? int.tryParse(metadata!['dayNumber'].toString())
+          : null;
+      final DateTime? date = metadata?['date'] != null
+          ? DateTime.tryParse(metadata!['date'].toString())
+          : null;
+      final String? activityId = referenceId ?? metadata?['activityId']?.toString();
+
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => ItineraryScreen(
             tripData: activeTrip,
             isSoloTraveler: role == 'solotraveler' || role == 'solo_traveler',
+            initialDayNumber: dayNumber,
+            initialDate: date,
+            initialActivityId: activityId,
           ),
         ),
       );
