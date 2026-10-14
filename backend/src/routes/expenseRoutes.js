@@ -14,6 +14,9 @@ import {
   deleteExpense,
   getTripExpenseMembers,
   downloadExpensePdf,
+  reportExpenseSplit,
+  getExpenseReports,
+  updateExpenseReportStatus,
 } from "../controllers/expenseController.js";
 
 const router = express.Router({ mergeParams: true });
@@ -22,6 +25,10 @@ router.use(protect);
 
 // PDF Expense Report Download
 router.get("/report/pdf", downloadExpensePdf);
+
+// Split Expense Dispute Reports (Must be before /:expenseId)
+router.get("/reports", getExpenseReports);
+router.patch("/reports/:reportId/status", updateExpenseReportStatus);
 
 // Members eligible for splitting
 router.get("/members", getTripExpenseMembers);
@@ -42,6 +49,7 @@ router.get("/", getTripExpenses);
 router.get("/:expenseId", getExpenseDetail);
 router.put("/:expenseId", expenseUpload.single('receipt'), updateExpense);
 router.post("/:expenseId/settle", settleParticipant);
+router.post("/:expenseId/report", reportExpenseSplit);
 router.delete("/:expenseId", deleteExpense);
 
 export default router;

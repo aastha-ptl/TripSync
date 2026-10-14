@@ -7,6 +7,7 @@ import TripParticipant from "../models/TripParticipant.js";
 import Family from "../models/Family.js";
 import Trip from "../models/Trip.js";
 import User from "../models/User.js";
+import ExpenseReport from "../models/ExpenseReport.js";
 import PDFDocument from "pdfkit";
 import { createAndSendNotification } from "../services/notificationService.js";
 import { emitToTripRoom } from "../socket.js";
@@ -1104,6 +1105,12 @@ export const getExpenseDetail = async (req, res) => {
       }
     }
 
+    const isCreatorOrPayer =
+      expense.createdBy?._id?.toString() === userId.toString() ||
+      payer.entityId === currentEntityId;
+
+    const expenseReports = await ExpenseReport.find({ expenseId }).lean();
+
     const formattedParticipants = visibleParticipants.map((p) => {
       const isUser = p.participantType === "user" && p.userId;
       const pEntityId = isUser ? p.userId._id.toString() : p.guestId?.toString();
@@ -1152,6 +1159,16 @@ export const getExpenseDetail = async (req, res) => {
         }
       }
 
+      const pReports = expenseReports.filter(
+        (r) => r.participantId.toString() === p._id.toString()
+      );
+      const hasReport = pReports.length > 0;
+      const isOwnerOrReporter =
+        isCreatorOrPayer ||
+        pReports.some((r) => r.reportedBy.toString() === userId.toString());
+      const activeReport =
+        pReports.find((r) => r.status === "pending") || pReports[0];
+
       return {
         id: p._id,
         userId: isUser ? p.userId._id : null,
@@ -1168,6 +1185,12 @@ export const getExpenseDetail = async (req, res) => {
         isCreator,
         isCurrentUser,
         isRemoved: !!isRemoved,
+        hasReport,
+        reportCount: isOwnerOrReporter ? pReports.length : 0,
+        reportMessage: isOwnerOrReporter && activeReport ? activeReport.message : null,
+        reportStatus: activeReport ? activeReport.status : null,
+        reportId: isOwnerOrReporter && activeReport ? activeReport._id : null,
+        reportedBy: isOwnerOrReporter && activeReport ? activeReport.reportedBy : null,
       };
     });
 
@@ -1177,10 +1200,6 @@ export const getExpenseDetail = async (req, res) => {
 
     const paidCount = formattedParticipants.filter((p) => p.settlementStatus === "settled").length;
     const amountLeft = Math.max(0, expense.amount - totalPaid);
-
-    const isCreatorOrPayer =
-      expense.createdBy?._id?.toString() === userId.toString() ||
-      payer.entityId === currentEntityId;
 
     res.status(200).json({
       success: true,
@@ -1192,6 +1211,10 @@ export const getExpenseDetail = async (req, res) => {
         paidCount,
         totalParticipants: formattedParticipants.length,
         isCreator: isCreatorOrPayer,
+        reportsCount: isCreatorOrPayer ? expenseReports.length : 0,
+        pendingReportsCount: isCreatorOrPayer
+          ? expenseReports.filter((r) => r.status === "pending").length
+          : 0,
       },
     });
   } catch (error) {
@@ -2259,3 +2282,163 @@ export const downloadExpensePdf = async (req, res) => {
     }
   }
 };
+
+// 12. Report a specific member's split in an expense
+export const reportExpenseSplit = async (req, res) => {
+  try {
+    const { tripId, expenseId } = req.params;
+    const { participantId, message } = req.body;
+    const userId = req.user._id;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, message: "Please provide a reason or message for the report." });
+    }
+
+    const access = await verifyTripAccess(tripId, userId);
+    if (!access) {
+      return res.status(403).json({ success: false, message: "Not a trip participant" });
+    }
+
+    const expense = await Expense.findOne({ _id: expenseId, tripId });
+    if (!expense) {
+      return res.status(404).json({ success: false, message: "Expense not found" });
+    }
+
+    const participant = await ExpenseParticipant.findOne({ _id: participantId, expenseId });
+    if (!participant) {
+      return res.status(404).json({ success: false, message: "Split participant record not found" });
+    }
+
+    // Determine expense owner (who receives the report)
+    // paidBy.userId takes precedence if paid by user, else createdBy
+    let expenseOwnerId = (expense.paidBy?.type === "user" && expense.paidBy?.userId)
+      ? expense.paidBy.userId
+      : expense.createdBy;
+
+    if (!expenseOwnerId) {
+      expenseOwnerId = expense.createdBy;
+    }
+
+    // Resolve participant name
+    let participantName = participant.guestName || "Member";
+    if (participant.participantType === "user" && participant.userId) {
+      const partUser = await User.findById(participant.userId).select("firstName lastName");
+      if (partUser) {
+        participantName = `${partUser.firstName || ""} ${partUser.lastName || ""}`.trim() || participantName;
+      }
+    }
+
+    // Create report record
+    const newReport = await ExpenseReport.create({
+      tripId,
+      expenseId,
+      participantId,
+      expenseOwnerId,
+      reportedBy: userId,
+      participantName,
+      participantShare: participant.shareAmount || 0,
+      message: message.trim(),
+      status: "pending",
+    });
+
+    const reporterName = req.user.firstName
+      ? `${req.user.firstName} ${req.user.lastName || ""}`.trim()
+      : (req.user.name || "A member");
+
+    // Send notification to expense owner if not self
+    if (expenseOwnerId.toString() !== userId.toString()) {
+      await createAndSendNotification({
+        targetUserIds: [expenseOwnerId.toString()],
+        tripId,
+        type: "expenseReported",
+        title: "Split Expense Reported",
+        message: `${reporterName} reported a split for "${participantName}" in "${expense.title}": "${message.trim()}"`,
+        referenceId: expense._id,
+        referenceType: "Expense",
+        metadata: {
+          expenseId: expense._id.toString(),
+          participantId: participantId.toString(),
+          reportId: newReport._id.toString(),
+          reportedBy: userId.toString(),
+          reporterName,
+          participantName,
+          message: message.trim(),
+        },
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Report submitted successfully to the expense owner.",
+      data: newReport,
+    });
+  } catch (error) {
+    console.error("Error reporting expense split:", error);
+    res.status(500).json({ success: false, message: "Server error reporting split" });
+  }
+};
+
+// 13. Get all split reports for expenses owned by the current user
+// Only expense owner can view reports for their expenses!
+export const getExpenseReports = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const userId = req.user._id;
+
+    const access = await verifyTripAccess(tripId, userId);
+    if (!access) {
+      return res.status(403).json({ success: false, message: "Not a trip participant" });
+    }
+
+    // Fetch reports specifically where expenseOwnerId is the current user
+    const reports = await ExpenseReport.find({
+      tripId,
+      expenseOwnerId: userId,
+    })
+      .populate("expenseId", "title amount category date receiptUrl currency")
+      .populate("reportedBy", "firstName lastName profilePhoto")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: reports,
+    });
+  } catch (error) {
+    console.error("Error fetching expense reports:", error);
+    res.status(500).json({ success: false, message: "Server error fetching reports" });
+  }
+};
+
+// 14. Update status of a split report (e.g., mark as resolved or dismissed by expense owner)
+export const updateExpenseReportStatus = async (req, res) => {
+  try {
+    const { tripId, reportId } = req.params;
+    const { status, resolutionNote } = req.body;
+    const userId = req.user._id;
+
+    const report = await ExpenseReport.findOne({ _id: reportId, tripId });
+    if (!report) {
+      return res.status(404).json({ success: false, message: "Report not found" });
+    }
+
+    // Only expense owner can update status
+    if (report.expenseOwnerId.toString() !== userId.toString()) {
+      return res.status(403).json({ success: false, message: "Only the expense owner can manage this report" });
+    }
+
+    if (status) report.status = status;
+    if (resolutionNote !== undefined) report.resolutionNote = resolutionNote;
+    await report.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Report status updated",
+      data: report,
+    });
+  } catch (error) {
+    console.error("Error updating report status:", error);
+    res.status(500).json({ success: false, message: "Server error updating report" });
+  }
+};
+

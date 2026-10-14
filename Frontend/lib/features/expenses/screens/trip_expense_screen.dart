@@ -10,6 +10,7 @@ import '../services/trip_expense_service.dart';
 import 'trip_expense_create_screen.dart';
 import 'trip_expense_detail_screen.dart';
 import 'trip_expense_person_balance_screen.dart';
+import 'trip_expense_reports_screen.dart';
 
 class TripExpenseScreen extends StatefulWidget {
   final Map<String, dynamic>? tripData;
@@ -53,6 +54,7 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
   List<Map<String, dynamic>> _owedByYouList = [];
   List<Map<String, dynamic>> _owedToYouList = [];
   List<Map<String, dynamic>> _settledList = [];
+  int _pendingReportsCount = 0;
 
   @override
   void initState() {
@@ -109,13 +111,15 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
     final summaryFuture = _expenseService.getSummary(tripId, actingAsGuestId: _actingAsGuestId);
     final expensesFuture = _expenseService.getExpenses(tripId, actingAsGuestId: _actingAsGuestId);
     final balancesFuture = _expenseService.getBalances(tripId, actingAsGuestId: _actingAsGuestId);
+    final reportsFuture = _expenseService.getExpenseReports(tripId);
 
-    final results = await Future.wait([summaryFuture, expensesFuture, balancesFuture]);
+    final results = await Future.wait([summaryFuture, expensesFuture, balancesFuture, reportsFuture]);
 
     if (mounted) {
       final summaryRes = results[0];
       final expensesRes = results[1];
       final balancesRes = results[2];
+      final reportsRes = results[3];
 
       setState(() {
         if (balancesRes['success'] == true) {
@@ -143,10 +147,35 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
           _myExpenses = (expensesRes['data'] as List).cast<Map<String, dynamic>>();
         }
 
+        if (reportsRes['success'] == true && reportsRes['data'] is List) {
+          final rList = reportsRes['data'] as List;
+          _pendingReportsCount = rList.where((r) => r['status'] == 'pending').length;
+        } else {
+          _pendingReportsCount = 0;
+        }
+
         _isLoading = false;
       });
 
       _scrollToBottom();
+    }
+  }
+
+  void _openExpenseReports() async {
+    final tripId = widget.tripData?['_id'];
+    if (tripId == null) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TripExpenseReportsScreen(
+          tripId: tripId,
+          tripData: widget.tripData,
+        ),
+      ),
+    );
+    if (mounted) {
+      await _fetchAllData();
     }
   }
 
@@ -466,16 +495,54 @@ class _TripExpenseScreenState extends State<TripExpenseScreen> {
             const SizedBox(width: 8),
           ],
 
-          // Download Expense PDF Report
+          // Split Dispute Reports Icon Button (replaces PDF icon)
           GestureDetector(
-            onTap: _downloadExpensePdf,
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: const BoxDecoration(
-                color: Color(0xFFEFF6FF),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.picture_as_pdf_outlined, color: Color(0xFF1E5AE6), size: 18),
+            onTap: _openExpenseReports,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: _pendingReportsCount > 0
+                        ? const Color(0xFFFEE2E2)
+                        : const Color(0xFFEFF6FF),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _pendingReportsCount > 0
+                        ? Icons.report_problem_rounded
+                        : Icons.report_problem_outlined,
+                    color: _pendingReportsCount > 0
+                        ? const Color(0xFFDC2626)
+                        : const Color(0xFF1E5AE6),
+                    size: 18,
+                  ),
+                ),
+                if (_pendingReportsCount > 0)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFDC2626),
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                      child: Text(
+                        '$_pendingReportsCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          height: 1,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: 8),

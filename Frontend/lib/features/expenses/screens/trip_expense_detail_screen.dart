@@ -184,6 +184,232 @@ class _TripExpenseDetailScreenState extends State<TripExpenseDetailScreen> {
     }
   }
 
+  Future<void> _showReportDialog(Map<String, dynamic> participant) async {
+    final TextEditingController reasonController = TextEditingController(
+      text: participant['reportMessage']?.toString() ?? '',
+    );
+    final String memberName = participant['name'] ?? 'Member';
+    final double share = (participant['shareAmount'] as num?)?.toDouble() ?? 0.0;
+    bool isSubmitting = false;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Container(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFEE2E2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.report_problem_rounded,
+                        color: Color(0xFFDC2626),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Report Split Issue',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          Text(
+                            '$memberName • ₹${share.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFBFDBFE)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.lock_outline, size: 16, color: Color(0xFF1E5AE6)),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Only the expense owner will see this report and message.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF1E40AF),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Reason / Message',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: reasonController,
+                  maxLines: 3,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Describe the issue (e.g. incorrect amount, not present, paid separately)...',
+                    hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF1E5AE6), width: 1.5),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                final text = reasonController.text.trim();
+                                if (text.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Please enter a reason or message'),
+                                      backgroundColor: Colors.redAccent,
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                setModalState(() => isSubmitting = true);
+                                final res = await _expenseService.reportSplit(
+                                  widget.tripId,
+                                  widget.expenseId,
+                                  participantId: participant['id'],
+                                  message: text,
+                                );
+
+                                if (!mounted) return;
+                                Navigator.pop(ctx);
+
+                                if (res['success'] == true) {
+                                  _isModified = true;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Report submitted to expense owner!'),
+                                      backgroundColor: Color(0xFF16A34A),
+                                    ),
+                                  );
+                                  _fetchDetail();
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(res['message'] ?? 'Failed to submit report'),
+                                      backgroundColor: Colors.redAccent,
+                                    ),
+                                  );
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFDC2626),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: isSubmitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : Text(
+                                participant['hasReport'] == true ? 'Update Report' : 'Submit Report',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _editExpense() {
     Navigator.push(
       context,
@@ -235,6 +461,12 @@ class _TripExpenseDetailScreenState extends State<TripExpenseDetailScreen> {
       orElse: () => {},
     );
     final canUserPay = myUnpaidPart.isNotEmpty;
+
+    final myParticipant = _participants.firstWhere(
+      (p) => p['isCurrentUser'] == true,
+      orElse: () => {},
+    );
+    final isSplitPerson = myParticipant.isNotEmpty && !_isCreator;
 
     // Difference calculations
     String? diffText;
@@ -296,6 +528,22 @@ class _TripExpenseDetailScreenState extends State<TripExpenseDetailScreen> {
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.white, size: 20),
               onPressed: _deleteExpense,
+            ),
+          ] else if (isSplitPerson) ...[
+            IconButton(
+              icon: Icon(
+                myParticipant['hasReport'] == true
+                    ? Icons.report_problem_rounded
+                    : Icons.report_problem_outlined,
+                color: myParticipant['hasReport'] == true
+                    ? const Color(0xFFFCA5A5)
+                    : Colors.white,
+                size: 22,
+              ),
+              tooltip: myParticipant['hasReport'] == true
+                  ? 'Split Issue Reported'
+                  : 'Report Split Issue',
+              onPressed: () => _showReportDialog(myParticipant),
             ),
           ],
         ],
@@ -569,119 +817,199 @@ class _TripExpenseDetailScreenState extends State<TripExpenseDetailScreen> {
                         final isSettled = p['settlementStatus'] == 'settled';
                         final isCreator = p['isCreator'] == true;
                         final share = (p['shareAmount'] as num?)?.toDouble() ?? 0.0;
+                        final hasReport = p['hasReport'] == true;
+                        final reportMessage = p['reportMessage'];
+                        final reportStatus = p['reportStatus'];
 
                         return Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            border: Border.all(
+                              color: (_isCreator && hasReport) ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0),
+                              width: (_isCreator && hasReport) ? 1.5 : 1,
+                            ),
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Stack(
+                              Row(
                                 children: [
-                                  CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor: const Color(0xFFEFF6FF),
-                                    backgroundImage: p['avatar'] != null ? NetworkImage(p['avatar']) : null,
-                                    child: p['avatar'] == null
-                                        ? Text(
-                                            (p['name'] as String).isNotEmpty ? p['name'][0].toUpperCase() : 'M',
-                                            style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
-                                          )
-                                        : null,
-                                  ),
-                                  if (isSettled)
-                                    Positioned(
-                                      bottom: 0,
-                                      right: 0,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFF16A34A),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(Icons.check, size: 10, color: Colors.white),
+                                  Stack(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 20,
+                                        backgroundColor: const Color(0xFFEFF6FF),
+                                        backgroundImage: p['avatar'] != null ? NetworkImage(p['avatar']) : null,
+                                        child: p['avatar'] == null
+                                            ? Text(
+                                                (p['name'] as String).isNotEmpty ? p['name'][0].toUpperCase() : 'M',
+                                                style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+                                              )
+                                            : null,
                                       ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(width: 14),
-
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Flexible(
-                                          child: Text(
-                                            p['isCurrentUser'] == true ? 'You' : (p['name'] ?? 'User'),
-                                            style: const TextStyle(
-                                              color: AppColors.textPrimary,
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w600,
+                                      if (isSettled)
+                                        Positioned(
+                                          bottom: 0,
+                                          right: 0,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2),
+                                            decoration: const BoxDecoration(
+                                              color: Color(0xFF16A34A),
+                                              shape: BoxShape.circle,
                                             ),
-                                            overflow: TextOverflow.ellipsis,
+                                            child: const Icon(Icons.check, size: 10, color: Colors.white),
                                           ),
                                         ),
-                                        if (p['isRemoved'] == true) ...[
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFFEE2E2),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: const Text(
-                                              'Removed Traveler',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color: Color(0xFFDC2626),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 14),
+
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                p['isCurrentUser'] == true ? 'You' : (p['name'] ?? 'User'),
+                                                style: const TextStyle(
+                                                  color: AppColors.textPrimary,
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
                                               ),
+                                            ),
+                                            if (p['isRemoved'] == true) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFFEE2E2),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: const Text(
+                                                  'Removed Traveler',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Color(0xFFDC2626),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                            if (_isCreator && hasReport) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFFEE2E2),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(color: const Color(0xFFFECACA)),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.flag_rounded, size: 10, color: Color(0xFFDC2626)),
+                                                    const SizedBox(width: 2),
+                                                    Text(
+                                                      reportStatus == 'resolved' ? 'Resolved' : 'Reported',
+                                                      style: TextStyle(
+                                                        fontSize: 9,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: reportStatus == 'resolved' ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                        if (p['leaderName'] != null && p['leaderName'].toString().trim().isNotEmpty) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Family Leader: ${_toTitleCase(p['leaderName'].toString())}',
+                                            style: const TextStyle(
+                                              color: Color(0xFF1E5AE6),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                         ],
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          isCreator
+                                              ? 'Paid full bill'
+                                              : isSettled
+                                                  ? 'Settled'
+                                                  : 'Pending',
+                                          style: TextStyle(
+                                            color: isSettled ? const Color(0xFF16A34A) : AppColors.textSecondary,
+                                            fontSize: 12,
+                                            fontWeight: isSettled ? FontWeight.w600 : FontWeight.normal,
+                                          ),
+                                        ),
                                       ],
                                     ),
-                                    if (p['leaderName'] != null && p['leaderName'].toString().trim().isNotEmpty) ...[
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Family Leader: ${_toTitleCase(p['leaderName'].toString())}',
-                                        style: const TextStyle(
-                                          color: Color(0xFF1E5AE6),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
+                                  ),
+
+                                  Text(
+                                    '₹${share.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      color: isSettled ? const Color(0xFF16A34A) : AppColors.textPrimary,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_isCreator && hasReport && reportMessage != null && reportMessage.toString().trim().isNotEmpty) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: const Color(0xFFFECACA)),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(Icons.report_problem_rounded, size: 14, color: Color(0xFFDC2626)),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'Split Dispute Reason (Visible only to you):',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF991B1B),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              reportMessage,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Color(0xFF7F1D1D),
+                                                height: 1.3,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ],
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      isCreator
-                                          ? 'Paid full bill'
-                                          : isSettled
-                                              ? 'Settled'
-                                              : 'Pending',
-                                      style: TextStyle(
-                                        color: isSettled ? const Color(0xFF16A34A) : AppColors.textSecondary,
-                                        fontSize: 12,
-                                        fontWeight: isSettled ? FontWeight.w600 : FontWeight.normal,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-
-                              Text(
-                                '₹${share.toStringAsFixed(2)}',
-                                style: TextStyle(
-                                  color: isSettled ? const Color(0xFF16A34A) : AppColors.textPrimary,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                              ],
                             ],
                           ),
                         );

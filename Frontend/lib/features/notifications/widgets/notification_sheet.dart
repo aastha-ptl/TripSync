@@ -62,7 +62,9 @@ class _NotificationSheetState extends State<NotificationSheet> {
     if (_selectedFilter == 'Splits') {
       return items
           .where((n) =>
-              n['type'] == 'expenseAdded' || n['type'] == 'expenseUpdated')
+              n['type'] == 'expenseAdded' ||
+              n['type'] == 'expenseUpdated' ||
+              n['type'] == 'expenseReported')
           .toList();
     }
     return items;
@@ -306,7 +308,7 @@ class _NotificationSheetState extends State<NotificationSheet> {
 
     final Map<String, dynamic> activeTrip = tripData;
 
-    if (type == 'expenseAdded' || type == 'expenseUpdated') {
+    if (type == 'expenseAdded' || type == 'expenseUpdated' || type == 'expenseReported') {
       if (referenceId != null && referenceId.isNotEmpty) {
         Navigator.push(
           context,
@@ -449,6 +451,10 @@ class _NotificationSheetState extends State<NotificationSheet> {
       icon = Icons.calendar_month_rounded;
       iconBg = const Color(0xFFF3E8FF);
       iconColor = const Color(0xFF9333EA);
+    } else if (type == 'expenseReported') {
+      icon = Icons.report_problem_rounded;
+      iconBg = const Color(0xFFFEE2E2);
+      iconColor = const Color(0xFFDC2626);
     } else if (type == 'expenseAdded' || type == 'expenseUpdated') {
       icon = Icons.account_balance_wallet_rounded;
       iconBg = const Color(0xFFE8F5E9);

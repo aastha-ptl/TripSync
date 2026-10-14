@@ -314,4 +314,67 @@ class TripExpenseService {
     }
     return url;
   }
+
+  // 12. Report a specific member split with message
+  Future<Map<String, dynamic>> reportSplit(
+    String tripId,
+    String expenseId, {
+    required String participantId,
+    required String message,
+  }) async {
+    try {
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/trips/$tripId/expenses/$expenseId/report'),
+        headers: headers,
+        body: jsonEncode({
+          'participantId': participantId,
+          'message': message,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  // 13. Get all split dispute reports for expenses owned by current user
+  Future<Map<String, dynamic>> getExpenseReports(String tripId) async {
+    try {
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final headers = await _getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/trips/$tripId/expenses/reports'),
+        headers: headers,
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  // 14. Update report status (e.g. resolved / dismissed)
+  Future<Map<String, dynamic>> updateReportStatus(
+    String tripId,
+    String reportId, {
+    required String status,
+    String? resolutionNote,
+  }) async {
+    try {
+      final baseUrl = await ApiEndpoints.getBaseUrl();
+      final headers = await _getHeaders();
+      final response = await http.patch(
+        Uri.parse('$baseUrl/trips/$tripId/expenses/reports/$reportId/status'),
+        headers: headers,
+        body: jsonEncode({
+          'status': status,
+          if (resolutionNote != null) 'resolutionNote': resolutionNote,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
 }

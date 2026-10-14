@@ -32,6 +32,7 @@ const notificationSchema = new mongoose.Schema(
         "documentShared",
         "expenseAdded",
         "expenseUpdated",
+        "expenseReported",
         "familyInvitation",
         "locationUpdate",
       ],
