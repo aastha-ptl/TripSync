@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { adminApi } from "../services/api";
-import { Users, Search, ShieldAlert, CheckCircle, Ban, ArrowLeft, ArrowRight, Lock } from "lucide-react";
+import { Users, Search, ShieldAlert, CheckCircle, Ban, ArrowLeft, ArrowRight, Mail } from "lucide-react";
 
 export default function UsersView() {
   const [users, setUsers] = useState([]);
@@ -68,7 +68,7 @@ export default function UsersView() {
           <div style={{ position: "relative", width: "100%" }}>
             <input
               type="text"
-              placeholder="Search by MongoDB ID..."
+              placeholder="Search by name, email, or ID..."
               className="form-input"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -106,7 +106,7 @@ export default function UsersView() {
       {loading && (
         <div className="card loading-box">
           <div className="spinner"></div>
-          <p>Loading privacy-masked user accounts...</p>
+          <p>Loading user accounts...</p>
         </div>
       )}
 
@@ -121,10 +121,10 @@ export default function UsersView() {
           <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-subtle)" }}>
             <div className="card-title">
               <Users size={18} color="var(--accent-primary)" />
-              Anonymized User Account Management
+              User Account Management
             </div>
             <div className="card-subtitle">
-              User real names, emails, and phone numbers are excluded from administrator view for strict GDPR/privacy compliance.
+              Manage registered user accounts, view user emails, and moderate account access.
             </div>
           </div>
 
@@ -132,7 +132,8 @@ export default function UsersView() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Masked Identifier</th>
+                  <th>Name</th>
+                  <th>Email</th>
                   <th>System Role</th>
                   <th>Account Status</th>
                   <th>Registration Date</th>
@@ -144,7 +145,7 @@ export default function UsersView() {
               <tbody>
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
+                    <td colSpan="8" style={{ textAlign: "center", padding: "40px", color: "var(--text-muted)" }}>
                       No user accounts found matching this criteria.
                     </td>
                   </tr>
@@ -156,9 +157,36 @@ export default function UsersView() {
                     return (
                       <tr key={u.id}>
                         <td>
-                          <div className="masked-badge">
-                            <Lock size={12} />
-                            <span>{u.maskedId}</span>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "10px" }}>
+                            <div
+                              style={{
+                                width: "30px",
+                                height: "30px",
+                                borderRadius: "50%",
+                                background: "linear-gradient(135deg, var(--color-primary), #6366F1)",
+                                color: "#ffffff",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontWeight: 700,
+                                fontSize: "0.8rem",
+                                flexShrink: 0,
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              {u.name && u.name.trim() ? u.name.trim().charAt(0) : "U"}
+                            </div>
+                            <span style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "0.86rem" }}>
+                              {u.name || "Unnamed User"}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                            <Mail size={13} color="var(--text-muted)" />
+                            <span style={{ color: "var(--text-secondary)", fontSize: "0.84rem" }}>
+                              {u.email || "—"}
+                            </span>
                           </div>
                         </td>
                         <td>
@@ -287,8 +315,8 @@ export default function UsersView() {
 
             <p style={{ color: "var(--text-secondary)", fontSize: "0.88rem", lineHeight: 1.5, marginBottom: "20px" }}>
               Are you sure you want to {actionType === "suspend" ? "suspend" : "reactivate"} user account{" "}
-              <strong style={{ color: "var(--accent-cyan)", fontFamily: "var(--font-mono)" }}>
-                {selectedUser.maskedId}
+              <strong style={{ color: "var(--color-primary)", fontWeight: 700 }}>
+                {selectedUser.name ? `${selectedUser.name} (${selectedUser.email || selectedUser.maskedId})` : (selectedUser.email || selectedUser.maskedId)}
               </strong>
               ? {actionType === "suspend" ? "This will immediately restrict their ability to log in or create trips." : "This will restore full access to their mobile application."}
             </p>

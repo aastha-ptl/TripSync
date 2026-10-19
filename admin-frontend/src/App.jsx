@@ -80,8 +80,8 @@ export default function App() {
         };
       case "users":
         return {
-          title: "Privacy-Preserved User Moderation",
-          subtitle: "Account lifecycle status and security moderation via masked tokens",
+          title: "User Management & Moderation",
+          subtitle: "Account lifecycle status, user directory, and security moderation",
         };
       case "reports":
         return {

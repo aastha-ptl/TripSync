@@ -481,8 +481,8 @@ export const getExpenseAnalytics = async (req, res, next) => {
 };
 
 /**
- * Anonymized Users Directory (STRICT ZERO-PII)
- * Returns masked IDs, account status, joined date, trip counts.
+ * Users Directory
+ * Returns users with email, account status, joined date, trip counts.
  */
 export const getUsersDirectory = async (req, res, next) => {
   try {
@@ -498,15 +498,25 @@ export const getUsersDirectory = async (req, res, next) => {
 
     if (search) {
       if (mongoose.Types.ObjectId.isValid(search)) {
-        filter._id = search;
+        filter.$or = [
+          { _id: search },
+          { email: { $regex: search, $options: "i" } },
+          { firstName: { $regex: search, $options: "i" } },
+          { lastName: { $regex: search, $options: "i" } }
+        ];
+      } else {
+        filter.$or = [
+          { email: { $regex: search, $options: "i" } },
+          { firstName: { $regex: search, $options: "i" } },
+          { lastName: { $regex: search, $options: "i" } }
+        ];
       }
     }
 
     const totalUsers = await User.countDocuments(filter);
 
-    // Strictly project ONLY non-PII fields
     const users = await User.find(filter)
-      .select("_id accountStatus isActive role createdAt lastLoginAt")
+      .select("_id email firstName lastName accountStatus isActive role createdAt lastLoginAt")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -524,12 +534,14 @@ export const getUsersDirectory = async (req, res, next) => {
       countMap[tc._id.toString()] = tc.count;
     });
 
-    const anonymizedUsers = users.map((u) => {
+    const formattedUsers = users.map((u) => {
       const idStr = u._id.toString();
       const maskedId = `USR-${idStr.slice(-6).toUpperCase()}`;
       return {
         id: idStr,
         maskedId,
+        email: u.email,
+        name: [u.firstName, u.lastName].filter(Boolean).join(" "),
         accountStatus: u.accountStatus,
         isActive: u.isActive,
         role: u.role || "user",
@@ -542,7 +554,7 @@ export const getUsersDirectory = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       data: {
-        users: anonymizedUsers,
+        users: formattedUsers,
         pagination: {
           page,
           limit,
@@ -585,6 +597,7 @@ export const updateUserStatus = async (req, res, next) => {
       success: true,
       message: `User account status updated to ${accountStatus}.`,
       data: {
+        email: user.email,
         maskedId: `USR-${user._id.toString().slice(-6).toUpperCase()}`,
         accountStatus: user.accountStatus,
         isActive: user.isActive,
