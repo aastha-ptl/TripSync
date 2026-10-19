@@ -122,6 +122,13 @@ const userSchema = new mongoose.Schema(
     // ACCOUNT STATUS
     // =====================================
 
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+      index: true,
+    },
+
     accountStatus: {
       type: String,
       enum: [

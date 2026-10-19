@@ -5,9 +5,25 @@ import env from "./config/env.js";
 
 const app = express();
 
+const allowedOrigins = [
+  env.CLIENT_URL,
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
+];
+
 app.use(
   cors({
-    origin: env.CLIENT_URL,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, or postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== "production") {
+        return callback(null, true);
+      }
+      return callback(null, true); // Permissive in dev mode
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   })
@@ -68,11 +84,14 @@ import chatRoutes from "./routes/chatRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
 import pollRoutes from "./routes/pollRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
+
 app.use("/api/documents", documentRoutes);
 app.use("/api/trips/:tripId/chat", chatRoutes);
 app.use("/api/trips/:tripId/locations", locationRoutes);
 app.use("/api/trips/:tripId/polls", pollRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/admin", adminRoutes);
 
 
 app.get("/join/:inviteToken", (req, res) => {
